@@ -19,6 +19,7 @@ path = "../gcc-rs"
 libc = "*"
 rand = "*"
 scoped_threadpool = "=0.1.6"
+time = "*"
 
 #[dependencies.async_cuda]
 #path = "../libasync_cuda"

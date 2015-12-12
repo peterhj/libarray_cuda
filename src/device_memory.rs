@@ -170,6 +170,7 @@ impl<'ctx, T> DeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
 
   pub fn send(&self, other: &mut DeviceBufferRefMut<'ctx, T>) {
     assert_eq!(self.len, other.len);
+    assert_eq!(self.size, other.size);
     if self.dev_idx == other.dev_idx {
       unsafe { cuda_memcpy_async(
           other.as_mut_ptr() as *mut u8,
@@ -177,6 +178,23 @@ impl<'ctx, T> DeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
           self.size,
           CudaMemcpyKind::DeviceToDevice,
           &self.ctx.stream,
+      ) }.unwrap();
+    } else {
+      // TODO(20151211)
+      unimplemented!();
+    }
+  }
+
+  pub fn raw_send<'a>(&self, other: &RawDeviceBuffer<T>, ctx: &DeviceCtxRef<'a>) {
+    assert_eq!(self.len, other.len);
+    assert_eq!(self.size, other.size);
+    if self.dev_idx == other.dev_idx {
+      unsafe { cuda_memcpy_async(
+          other.as_mut_ptr() as *mut u8,
+          self.as_ptr() as *const u8,
+          self.size,
+          CudaMemcpyKind::DeviceToDevice,
+          &ctx.stream,
       ) }.unwrap();
     } else {
       // TODO(20151211)
@@ -274,6 +292,82 @@ impl<'ctx, T> DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
         CudaMemcpyKind::HostToDevice,
         &self.ctx.stream,
     ) }.unwrap();
+  }
+}
+
+pub struct RawDeviceBuffer<T> where T: Copy {
+  dev_idx:  usize,
+  dptr: *mut T,
+  len:  usize,
+  size: usize,
+}
+
+unsafe impl<T> Send for RawDeviceBuffer<T> where T: Copy {}
+unsafe impl<T> Sync for RawDeviceBuffer<T> where T: Copy {}
+
+impl<T> Drop for RawDeviceBuffer<T> where T: Copy {
+  fn drop(&mut self) {
+    match unsafe { cudaFree(self.dptr as *mut c_void) } {
+      cudaError::Success => {}
+      e => {
+        panic!("failed to free device memory: {:?}", e);
+      }
+    }
+  }
+}
+
+impl<T> RawDeviceBuffer<T> where T: Copy {
+  pub fn new(len: usize, ctx: &DeviceCtxRef) -> RawDeviceBuffer<T> {
+    let min_size = len * size_of::<T>();
+    let size = (min_size + WARP_SIZE - 1) / WARP_SIZE * WARP_SIZE;
+    let mut dptr: *mut c_void = null_mut();
+    match unsafe { cudaMalloc(&mut dptr as *mut *mut c_void, size) } {
+      cudaError::Success => {}
+      e => {
+        panic!("failed to allocate DeviceBuffer: {:?}", e);
+      }
+    }
+    RawDeviceBuffer{
+      dev_idx:  ctx.device(),
+      dptr: dptr as *mut T,
+      len:  len,
+      size: size,
+    }
+  }
+
+  pub fn len(&self) -> usize {
+    self.len
+  }
+
+  pub unsafe fn as_ptr(&self) -> *const T {
+    self.dptr as *const T
+  }
+
+  pub unsafe fn as_mut_ptr(&self) -> *mut T {
+    self.dptr
+  }
+
+  pub fn send<'ctx>(&self, other: &RawDeviceBuffer<T>, ctx: &DeviceCtxRef<'ctx>) {
+    assert_eq!(self.len, other.len);
+    assert_eq!(self.size, other.size);
+    if self.dev_idx == other.dev_idx {
+      /*unsafe { cuda_memcpy_async(
+          other.as_mut_ptr() as *mut u8,
+          self.as_ptr() as *const u8,
+          self.size,
+          CudaMemcpyKind::DeviceToDevice,
+          &self.ctx.stream,
+      ) }.unwrap();*/
+      // TODO(20151212)
+      unimplemented!();
+    } else {
+      unsafe { cuda_memcpy_peer_async(
+          other.as_mut_ptr() as *mut u8, other.dev_idx,
+          self.as_ptr() as *const u8, self.dev_idx,
+          self.size,
+          &ctx.stream,
+      ) };
+    }
   }
 }
 

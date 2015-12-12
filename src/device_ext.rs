@@ -37,3 +37,27 @@ impl<'ctx> DeviceNumExt<i32> for DeviceBufferRefMut<'ctx, i32> {
     ) };
   }
 }
+
+impl<'ctx> DeviceNumExt<f32> for DeviceBufferRefMut<'ctx, f32> {
+  type Ref = DeviceBufferRef<'ctx, f32>;
+
+  fn print(&mut self) {
+    unimplemented!();
+  }
+
+  fn set_constant(&mut self, c: f32) {
+    unsafe { array_cuda_map_set_constant_f32(
+        self.as_mut_ptr(), self.len() as c_int,
+        c,
+        self.ctx.stream.ptr,
+    ) };
+  }
+
+  fn add(&mut self, other: &DeviceBufferRef<'ctx, f32>) {
+    unsafe { array_cuda_map_add_f32(
+        other.as_ptr(), other.len() as c_int,
+        self.as_mut_ptr(),
+        self.ctx.stream.ptr,
+    ) };
+  }
+}
