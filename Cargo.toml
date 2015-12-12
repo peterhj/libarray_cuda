@@ -1,0 +1,39 @@
+[package]
+name = "array_cuda"
+version = "0.0.1"
+authors = ["Peter Jin <peterhaijin@gmail.com>"]
+build = "build.rs"
+
+[lib]
+name = "array_cuda"
+path = "src/lib.rs"
+
+[[bin]]
+name = "test"
+path = "tools/test.rs"
+
+[build-dependencies.gcc]
+path = "../gcc-rs"
+
+[dependencies]
+libc = "*"
+rand = "*"
+scoped_threadpool = "=0.1.6"
+
+#[dependencies.async_cuda]
+#path = "../libasync_cuda"
+
+[dependencies.cuda]
+path = "../libcuda"
+
+[dependencies.cuda_blas]
+path = "../libcuda_blas"
+
+[dependencies.cuda_dnn]
+path = "../libcuda_dnn"
+
+[dependencies.cuda_rand]
+path = "../libcuda_rand"
+
+[dependencies.cuda_sparse]
+path = "../libcuda_sparse"
