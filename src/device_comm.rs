@@ -1,13 +1,17 @@
-use context::{DeviceCtxRef};
+use context::{DeviceContext, DeviceCtxRef};
 use device_ext::*;
 use device_memory::{
   DeviceBufferRef, RawDeviceBuffer,
   SyncDeviceBuffer, SyncDeviceBufferRef, SyncDeviceBufferRefMut,
 };
+use device_sync::{DeviceCondVarSource, DeviceCondVarSink};
 use ffi::*;
 
+use cuda::runtime::{CudaEvent};
+
 use libc::{c_int};
-use std::sync::{Arc, Barrier};
+use std::sync::{Arc, Barrier, Mutex, RwLock};
+use vec_map::{VecMap};
 
 pub trait ReduceOp {
   fn reduce<'ctx>(src: &RawDeviceBuffer<Self>, dst: &RawDeviceBuffer<Self>, ctx: &DeviceCtxRef<'ctx>) where Self: Copy;
@@ -142,24 +146,53 @@ impl<T> DeviceReduceWorker<T> where T: Copy + ReduceOp {
   }
 }
 
-pub struct DeviceAllReduceWorker<T> where T: Copy + ReduceOp {
-  tid:  usize,
-  nths: usize,
+pub struct DeviceAllReduceSharedData<T> where T: Copy + ReduceOp {
+  nths:     usize,
   barrier:  Arc<Barrier>,
+  //syncs:    Arc<RwLock<VecMap<Arc<CudaEvent>>>>,
+  cv_sinks: Arc<RwLock<VecMap<Arc<Mutex<DeviceCondVarSink>>>>>,
+  bufs:     Vec<Arc<RawDeviceBuffer<T>>>,
+}
+
+impl<T> DeviceAllReduceSharedData<T> where T: Copy + ReduceOp {
+  pub fn new(num_threads: usize, buf_size: usize, ctxs: &[DeviceContext]) -> DeviceAllReduceSharedData<T> {
+    let mut bufs = vec![];
+    for i in (0 .. 2 * num_threads) {
+      let ctx = ctxs[i % num_threads].as_ref();
+      bufs.push(Arc::new(RawDeviceBuffer::new(buf_size, &ctx)));
+    }
+    DeviceAllReduceSharedData{
+      nths:     num_threads,
+      barrier:  Arc::new(Barrier::new(num_threads)),
+      //syncs:    Arc::new(RwLock::new(VecMap::with_capacity(num_threads))),
+      cv_sinks: Arc::new(RwLock::new(VecMap::with_capacity(num_threads))),
+      bufs:     bufs,
+    }
+  }
+}
+
+pub struct DeviceAllReduceWorker<T> where T: Copy + ReduceOp {
+  tid:      usize,
+  nths:     usize,
   width:    usize,
   depth:    usize,
+  barrier:  Arc<Barrier>,
+  //syncs:    Arc<RwLock<VecMap<Arc<CudaEvent>>>>,
+  cv_src:   DeviceCondVarSource,
+  cv_sinks: Arc<RwLock<VecMap<Arc<Mutex<DeviceCondVarSink>>>>>,
   src_bufs: Vec<Option<Arc<RawDeviceBuffer<T>>>>,
-  dst_bufs: Vec<Option<Arc<RawDeviceBuffer<T>>>>,
+  rd_bufs:  Vec<Option<Arc<RawDeviceBuffer<T>>>>,
   bc_bufs:  Vec<Option<Arc<RawDeviceBuffer<T>>>>,
 }
 
 impl<T> DeviceAllReduceWorker<T> where T: Copy + ReduceOp {
-  pub fn new(tid: usize, num_threads: usize, barrier: Arc<Barrier>, bufs: &[Arc<RawDeviceBuffer<T>>]) -> DeviceAllReduceWorker<T> {
-    assert_eq!(2 * num_threads, bufs.len());
+  pub fn new(tid: usize, shared: Arc<DeviceAllReduceSharedData<T>>, ctx: &DeviceCtxRef) -> DeviceAllReduceWorker<T> {
+    let num_threads = shared.nths;
+    assert_eq!(2 * num_threads, shared.bufs.len());
     let width = num_threads.checked_next_power_of_two().unwrap();
     let depth = width.trailing_zeros() as usize;
     let mut src_bufs = vec![];
-    let mut dst_bufs = vec![];
+    let mut rd_bufs = vec![];
     let mut bc_bufs = vec![];
     // TODO(20151212): permute the buffers so that peer access enabled pairs are
     // spatially adjacent.
@@ -167,28 +200,43 @@ impl<T> DeviceAllReduceWorker<T> where T: Copy + ReduceOp {
       let r = 1 << (d + 1);
       let half_r = r / 2;
       if (tid % r) == half_r {
-        src_bufs.push(Some(bufs[tid].clone()));
-        dst_bufs.push(Some(bufs[num_threads + tid - half_r].clone()));
+        src_bufs.push(Some(shared.bufs[tid].clone()));
+        rd_bufs.push(Some(shared.bufs[num_threads + tid - half_r].clone()));
         bc_bufs.push(None);
       } else if (tid % r) == 0 {
-        src_bufs.push(Some(bufs[tid].clone()));
-        dst_bufs.push(Some(bufs[num_threads + tid].clone()));
-        bc_bufs.push(Some(bufs[tid + half_r].clone()));
+        src_bufs.push(Some(shared.bufs[tid].clone()));
+        rd_bufs.push(Some(shared.bufs[num_threads + tid].clone()));
+        bc_bufs.push(Some(shared.bufs[tid + half_r].clone()));
       } else {
         src_bufs.push(None);
-        dst_bufs.push(None);
+        rd_bufs.push(None);
         bc_bufs.push(None);
       }
     }
-    assert_eq!(src_bufs.len(), dst_bufs.len());
+    assert_eq!(src_bufs.len(), rd_bufs.len());
+    assert_eq!(src_bufs.len(), bc_bufs.len());
+    /*let mut syncs = shared.syncs.clone();
+    {
+      let mut syncs = syncs.write().unwrap();
+      syncs.insert(tid, Arc::new(CudaEvent::create_with_flags(0x02).unwrap()));
+    }*/
+    let mut cv_src = DeviceCondVarSource::new(ctx);
+    let mut cv_sinks = shared.cv_sinks.clone();
+    {
+      let mut cv_sinks = cv_sinks.write().unwrap();
+      cv_sinks.insert(tid, Arc::new(Mutex::new(cv_src.make_sink())));
+    }
     DeviceAllReduceWorker{
-      tid:  tid,
-      nths: num_threads,
-      barrier:  barrier,
+      tid:      tid,
+      nths:     num_threads,
       width:    width,
       depth:    depth,
+      barrier:  shared.barrier.clone(),
+      //syncs:    syncs,
+      cv_src:   cv_src,
+      cv_sinks: cv_sinks,
       src_bufs: src_bufs,
-      dst_bufs: dst_bufs,
+      rd_bufs:  rd_bufs,
       bc_bufs:  bc_bufs,
     }
   }
@@ -197,7 +245,7 @@ impl<T> DeviceAllReduceWorker<T> where T: Copy + ReduceOp {
     let tid = self.tid;
     let depth = self.depth;
     let &mut DeviceAllReduceWorker{
-      ref mut src_bufs, ref mut dst_bufs, ref mut bc_bufs, .. } = self;
+      ref mut src_bufs, ref mut rd_bufs, ref mut bc_bufs, .. } = self;
 
     ctx.sync();
     self.barrier.wait();
@@ -215,22 +263,22 @@ impl<T> DeviceAllReduceWorker<T> where T: Copy + ReduceOp {
 
       if (tid % r) == half_r {
         assert!(src_bufs[d].is_some());
-        assert!(dst_bufs[d].is_some());
+        assert!(rd_bufs[d].is_some());
 
         let src_buf = src_bufs[d].as_ref().unwrap();
-        let dst_buf = dst_bufs[d].as_ref().unwrap();
-        src_buf.send(dst_buf, ctx);
+        let rd_buf = rd_bufs[d].as_ref().unwrap();
+        src_buf.send(rd_buf, ctx);
         ctx.sync();
       }
       self.barrier.wait();
 
       if (tid % r) == 0 {
         assert!(src_bufs[d].is_some());
-        assert!(dst_bufs[d].is_some());
+        assert!(rd_bufs[d].is_some());
 
         let src_buf = src_bufs[d].as_ref().unwrap();
-        let dst_buf = dst_bufs[d].as_ref().unwrap();
-        ReduceOp::reduce(dst_buf, src_buf, ctx);
+        let rd_buf = rd_bufs[d].as_ref().unwrap();
+        ReduceOp::reduce(rd_buf, src_buf, ctx);
         ctx.sync();
       }
       self.barrier.wait();

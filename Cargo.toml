@@ -20,6 +20,7 @@ libc = "*"
 rand = "*"
 scoped_threadpool = "=0.1.6"
 time = "*"
+vec_map = "*"
 
 #[dependencies.async_cuda]
 #path = "../libasync_cuda"
