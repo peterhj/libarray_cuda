@@ -22,6 +22,9 @@ scoped_threadpool = "=0.1.6"
 time = "*"
 vec_map = "*"
 
+[dependencies.array_new]
+path = "../libarray_new"
+
 #[dependencies.async_cuda]
 #path = "../libasync_cuda"
 

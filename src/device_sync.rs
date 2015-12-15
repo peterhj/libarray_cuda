@@ -4,52 +4,59 @@ use cuda::runtime::{OwnedCudaEvent, SharedCudaEvent};
 
 use std::sync::{Arc};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::usize;
 
-pub struct DeviceCondVarSource {
-  cap_sinks:  usize,
-  num_sinks:  usize,
-  epoch:  Arc<AtomicUsize>,
-  event:  OwnedCudaEvent,
+pub fn device_condvar_channel(ctx: &DeviceCtxRef) -> (DeviceCondvarSource, DeviceCondvarSink) {
+  let src_epoch = Arc::new(AtomicUsize::new(0));
+  let sink_epoch = Arc::new(AtomicUsize::new(0));
+  let event = OwnedCudaEvent::create_fastest().unwrap();
+  let shared_event = event.share();
+  (
+    DeviceCondvarSource{
+      epoch:        src_epoch.clone(),
+      sink_epoch:   sink_epoch.clone(),
+      event:        event,
+    },
+    DeviceCondvarSink{
+      epoch:        sink_epoch,
+      src_epoch:    src_epoch,
+      event:        shared_event,
+    },
+  )
 }
 
-impl DeviceCondVarSource {
-  pub fn new(ctx: &DeviceCtxRef) -> DeviceCondVarSource {
-    DeviceCondVarSource{
-      cap_sinks:  1,
-      num_sinks:  0,
-      epoch:  Arc::new(AtomicUsize::new(0)),
-      event:  OwnedCudaEvent::create_fastest().unwrap(),
-    }
-  }
+pub struct DeviceCondvarSource {
+  epoch:        Arc<AtomicUsize>,
+  sink_epoch:   Arc<AtomicUsize>,
+  event:        OwnedCudaEvent,
+}
 
-  pub fn make_sink(&mut self) -> DeviceCondVarSink {
-    assert!(self.num_sinks < self.cap_sinks);
-    self.num_sinks += 1;
-    DeviceCondVarSink{
-      src_ep: self.epoch.clone(),
-      epoch:  0,
-      event:  self.event.share(),
-    }
-  }
-
+impl DeviceCondvarSource {
   pub fn notify(&self, ctx: &DeviceCtxRef) {
+    let epoch = self.epoch.load(Ordering::SeqCst);
+    while epoch > self.sink_epoch.load(Ordering::SeqCst) {
+      // Spin-wait.
+    }
     self.event.record(&ctx.stream).unwrap();
-    self.epoch.fetch_add(1, Ordering::SeqCst);
+    let prev_epoch = self.epoch.fetch_add(1, Ordering::SeqCst);
+    assert!(prev_epoch != usize::MAX);
   }
 }
 
-pub struct DeviceCondVarSink {
-  src_ep: Arc<AtomicUsize>,
-  epoch:  usize,
-  event:  SharedCudaEvent,
+pub struct DeviceCondvarSink {
+  epoch:        Arc<AtomicUsize>,
+  src_epoch:    Arc<AtomicUsize>,
+  event:        SharedCudaEvent,
 }
 
-impl DeviceCondVarSink {
-  pub fn wait(&mut self, ctx: &DeviceCtxRef) {
-    while self.epoch >= self.src_ep.load(Ordering::SeqCst) {
+impl DeviceCondvarSink {
+  pub fn wait(&self, ctx: &DeviceCtxRef) {
+    let epoch = self.epoch.load(Ordering::SeqCst);
+    while epoch == self.src_epoch.load(Ordering::SeqCst) {
       // Spin-wait.
     }
     ctx.stream.wait_shared_event(&self.event).unwrap();
-    self.epoch += 1;
+    let prev_epoch = self.epoch.fetch_add(1, Ordering::SeqCst);
+    assert!(prev_epoch != usize::MAX);
   }
 }

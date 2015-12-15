@@ -1,8 +1,8 @@
-#![feature(arc_counts)]
+//#![feature(arc_counts)]
 #![feature(optin_builtin_traits)]
 #![feature(unique)]
 
-//extern crate async_cuda;
+extern crate array_new;
 extern crate cuda;
 extern crate cuda_blas;
 extern crate cuda_dnn;
@@ -14,6 +14,7 @@ extern crate rand;
 extern crate vec_map;
 
 pub mod context;
+pub mod device_array;
 pub mod device_comm;
 pub mod device_ext;
 pub mod device_linalg;

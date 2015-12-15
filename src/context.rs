@@ -1,7 +1,7 @@
 //use cuda::ffi::runtime::{cudaDeviceFlags};
 use cuda::runtime::{CudaDevice, CudaStream, CudaEvent, /*CudaEventStatus*/};
 use cuda_blas::{CublasHandle};
-use cuda_dnn::{CudnnHandle};
+use cuda_dnn::v3::{CudnnHandle};
 use cuda_rand::{CurandGenerator};
 use cuda_sparse::{CusparseHandle};
 

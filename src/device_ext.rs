@@ -1,7 +1,23 @@
 use device_memory::{DeviceBufferRef, DeviceBufferRefMut};
 use ffi::*;
 
+use cuda::runtime::{cuda_memset_async};
 use libc::{c_int};
+
+pub trait DeviceBytesExt {
+  fn set_memory(&mut self, c: u8);
+}
+
+impl<'ctx> DeviceBytesExt for DeviceBufferRefMut<'ctx, u8> {
+  fn set_memory(&mut self, c: u8) {
+    unsafe { cuda_memset_async(
+        self.as_mut_ptr(),
+        c as i32,
+        self.len(),
+        &self.ctx.stream,
+    ) }.unwrap();
+  }
+}
 
 pub trait DeviceNumExt<T> {
   type Ref;

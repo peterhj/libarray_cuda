@@ -1,4 +1,5 @@
 use context::{DeviceCtxRef};
+use device_ext::{DeviceBytesExt, DeviceNumExt};
 use host_memory::{HostBufferRef};
 
 use cuda::ffi::runtime::{
@@ -28,14 +29,6 @@ pub trait DeviceStorage<T> where T: Copy {
   fn borrow_mut<'ctx>(&mut self, ctx: &'ctx DeviceCtxRef<'ctx>) -> Self::RefMut;
 }
 
-pub trait SyncDeviceStorage<T> where T: Copy {
-  type Ref:     DeviceStorageRef<T>;
-  type RefMut:  DeviceStorageRefMut<T>;
-
-  fn borrow<'ctx>(&mut self, ctx: &'ctx DeviceCtxRef<'ctx>) -> (Self::Ref, SyncGuard);
-  fn borrow_mut<'ctx>(&mut self, ctx: &'ctx DeviceCtxRef<'ctx>) -> (Self::RefMut, SyncGuard);
-}
-
 pub trait DeviceStorageRef<T> where T: Copy {
   unsafe fn as_ptr(&self) -> *const T;
 }
@@ -43,33 +36,6 @@ pub trait DeviceStorageRef<T> where T: Copy {
 pub trait DeviceStorageRefMut<T> where T: Copy {
   unsafe fn as_ptr(&self) -> *const T;
   unsafe fn as_mut_ptr(&mut self) -> *mut T;
-}
-
-pub struct SyncGuard {
-  dev_sync: Arc<CudaEvent>,
-}
-
-impl !Send for SyncGuard {}
-
-impl Drop for SyncGuard {
-  fn drop(&mut self) {
-    // XXX(20151211): This part ensures that the creating thread is the one
-    // that drops the event.
-    self.dev_sync.synchronize().unwrap();
-    loop {
-      if Arc::strong_count(&self.dev_sync) == 1 {
-        break;
-      }
-    }
-  }
-}
-
-impl SyncGuard {
-  fn new() -> SyncGuard {
-    SyncGuard{
-      dev_sync: Arc::new(CudaEvent::create_with_flags(0x02).unwrap()),
-    }
-  }
 }
 
 pub struct DeviceBuffer<T> where T: Copy {
@@ -92,7 +58,7 @@ impl<T> Drop for DeviceBuffer<T> where T: Copy {
 }
 
 impl<T> DeviceBuffer<T> where T: Copy {
-  pub fn new(len: usize, ctx: &DeviceCtxRef) -> DeviceBuffer<T> {
+  pub unsafe fn new(len: usize, ctx: &DeviceCtxRef) -> DeviceBuffer<T> {
     let min_size = len * size_of::<T>();
     let size = (min_size + WARP_SIZE - 1) / WARP_SIZE * WARP_SIZE;
     let mut dptr: *mut c_void = null_mut();
@@ -141,6 +107,39 @@ impl<T> DeviceBuffer<T> where T: Copy {
       len:  self.len,
       size: self.size,
     }
+  }
+}
+
+impl DeviceBuffer<u8> {
+  pub fn zeros(len: usize, ctx: &DeviceCtxRef) -> DeviceBuffer<u8> {
+    let mut buf = unsafe { Self::new(len, ctx) };
+    {
+      let mut buf_ref = buf.borrow_mut(ctx);
+      buf_ref.set_memory(0);
+    }
+    buf
+  }
+}
+
+impl DeviceBuffer<i32> {
+  pub fn zeros(len: usize, ctx: &DeviceCtxRef) -> DeviceBuffer<i32> {
+    let mut buf = unsafe { Self::new(len, ctx) };
+    {
+      let mut buf_ref = buf.borrow_mut(ctx);
+      buf_ref.set_constant(0);
+    }
+    buf
+  }
+}
+
+impl DeviceBuffer<f32> {
+  pub fn zeros(len: usize, ctx: &DeviceCtxRef) -> DeviceBuffer<f32> {
+    let mut buf = unsafe { Self::new(len, ctx) };
+    {
+      let mut buf_ref = buf.borrow_mut(ctx);
+      buf_ref.set_constant(0.0);
+    }
+    buf
   }
 }
 
@@ -317,7 +316,7 @@ impl<T> Drop for RawDeviceBuffer<T> where T: Copy {
 }
 
 impl<T> RawDeviceBuffer<T> where T: Copy {
-  pub fn new(len: usize, ctx: &DeviceCtxRef) -> RawDeviceBuffer<T> {
+  pub unsafe fn new(len: usize, ctx: &DeviceCtxRef) -> RawDeviceBuffer<T> {
     let min_size = len * size_of::<T>();
     let size = (min_size + WARP_SIZE - 1) / WARP_SIZE * WARP_SIZE;
     let mut dptr: *mut c_void = null_mut();
@@ -371,7 +370,7 @@ impl<T> RawDeviceBuffer<T> where T: Copy {
   }
 }
 
-struct InnerSyncDeviceBuffer<T> {
+/*struct InnerSyncDeviceBuffer<T> {
   dev_sync: Option<Arc<CudaEvent>>,
   dev_idx:  usize,
   dptr: *mut T,
@@ -549,7 +548,7 @@ impl<'ctx, T> SyncDeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
       unimplemented!();
     }
   }
-}
+}*/
 
 pub fn test_device_memory(buf1: &mut DeviceBuffer<f32>, buf2: &mut DeviceBuffer<f32>, ctx: &DeviceCtxRef) {
   let buf1 = buf1.borrow(ctx);
