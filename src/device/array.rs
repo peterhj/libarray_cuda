@@ -1,7 +1,11 @@
-use context::{DeviceCtxRef};
-use device_memory::{DeviceBuffer, DeviceBufferRef, DeviceBufferRefMut};
+use device::context::{DeviceCtxRef};
+use device::memory::{DeviceZeroExt, DeviceBuffer, DeviceBufferRef, DeviceBufferRefMut};
 
-use array_new::{Shape, Array, AsyncArray, ArrayView, ArrayViewMut};
+use array_new::{
+  Shape, Array, AsyncArray, ArrayView, ArrayViewMut,
+  Array2dView, Array2dViewMut,
+  Array3dView, Array3dViewMut,
+};
 
 pub struct DeviceArray2d<T> where T: Copy {
   data:     DeviceBuffer<T>,
@@ -15,7 +19,7 @@ where 'ctx: 'a, T: 'a + Copy {
   type View = DeviceArray2dView<'a, T>;
   type ViewMut = DeviceArray2dViewMut<'a, T>;
 
-  fn as_view_async(&'a mut self, ctx: &'a DeviceCtxRef<'ctx>) -> DeviceArray2dView<'a, T> {
+  fn as_view(&'a mut self, ctx: &'a DeviceCtxRef<'ctx>) -> DeviceArray2dView<'a, T> {
     DeviceArray2dView{
       data:     self.data.borrow(ctx),
       bound:    self.bound,
@@ -23,7 +27,7 @@ where 'ctx: 'a, T: 'a + Copy {
     }
   }
 
-  fn as_view_mut_async(&'a mut self, ctx: &'a DeviceCtxRef<'ctx>) -> DeviceArray2dViewMut<'a, T> {
+  fn as_view_mut(&'a mut self, ctx: &'a DeviceCtxRef<'ctx>) -> DeviceArray2dViewMut<'a, T> {
     DeviceArray2dViewMut{
       data:     self.data.borrow_mut(ctx),
       bound:    self.bound,
@@ -73,7 +77,7 @@ impl DeviceArray2d<f32> {
 }
 
 pub struct DeviceArray2dView<'a, T> where T: 'a + Copy {
-  data:     DeviceBufferRef<'a, T>,
+  pub data:     DeviceBufferRef<'a, T>,
   bound:    (usize, usize),
   stride:   usize,
 }
@@ -113,8 +117,15 @@ impl<'a, T> DeviceArray2dView<'a, T> where T: 'a + Copy {
   }
 }
 
+impl<'a, T> DeviceArray2dView<'a, T> where T: 'a + Copy {
+  pub fn sync_store(&self, dst: &mut Array2dViewMut<'a, T>) {
+    // TODO(20151218)
+    unimplemented!();
+  }
+}
+
 pub struct DeviceArray2dViewMut<'a, T> where T: 'a + Copy {
-  data:     DeviceBufferRefMut<'a, T>,
+  pub data:     DeviceBufferRefMut<'a, T>,
   bound:    (usize, usize),
   stride:   usize,
 }
@@ -132,12 +143,23 @@ impl<'a, T> ArrayViewMut<'a, T, (usize, usize)> for DeviceArray2dViewMut<'a, T> 
     self.bound.len()
   }
 
+  unsafe fn as_ptr(&self) -> *const T {
+    self.data.as_ptr()
+  }
+
   unsafe fn as_mut_ptr(&mut self) -> *mut T {
     self.data.as_mut_ptr()
   }
 
   fn view_mut(&mut self, lo: (usize, usize), hi: (usize, usize)) -> DeviceArray2dViewMut<'a, T> {
     // TODO(20151214)
+    unimplemented!();
+  }
+}
+
+impl<'a, T> DeviceArray2dViewMut<'a, T> where T: 'a + Copy {
+  pub fn sync_load(&mut self, src: &Array2dView<'a, T>) {
+    // TODO(20151218)
     unimplemented!();
   }
 }
@@ -155,7 +177,7 @@ pub fn test_device_array(
     array2: &mut DeviceArray2d<f32>,
     ctx: &DeviceCtxRef)
 {
-  let view1 = array1.as_view_async(ctx);
-  let mut view2 = array2.as_view_mut_async(ctx);
+  let view1 = array1.as_view(ctx);
+  let mut view2 = array2.as_view_mut(ctx);
   view1.send(&mut view2);
 }

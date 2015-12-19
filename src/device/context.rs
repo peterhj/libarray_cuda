@@ -11,6 +11,52 @@ use std::sync::{Once, ONCE_INIT};
 
 static DEVICE_CONTEXT_INIT: Once = ONCE_INIT;
 
+#[derive(Clone, Copy)]
+enum EventState {
+  Produce,
+  Consume,
+}
+
+pub struct DeviceCtxEvent {
+  dev_idx:    usize,
+  dev_sync:   CudaEvent,
+  state:      EventState,
+}
+
+impl DeviceCtxEvent {
+  pub fn new(ctx: &DeviceCtxRef) -> DeviceCtxEvent {
+    DeviceCtxEvent{
+      dev_idx:  ctx.device(),
+      dev_sync: CudaEvent::create_fastest().unwrap(),
+      state:    EventState::Produce,
+    }
+  }
+
+  pub fn produce(&mut self, ctx: &DeviceCtxRef) {
+    match self.state {
+      EventState::Produce => {
+        self.dev_sync.record(&ctx.stream).unwrap();
+        self.state = EventState::Consume;
+      }
+      EventState::Consume => {
+        panic!("DeviceCtxEvent::produce() in bad state");
+      }
+    }
+  }
+
+  pub fn consume(&mut self, ctx: &DeviceCtxRef) {
+    match self.state {
+      EventState::Produce => {
+        panic!("DeviceCtxEvent::consume() in bad state");
+      }
+      EventState::Consume => {
+        ctx.stream.wait_event(&self.dev_sync).unwrap();
+        self.state = EventState::Produce;
+      }
+    }
+  }
+}
+
 pub struct DeviceContext {
   dev_idx:    usize,
   dev_sync:   CudaEvent,

@@ -1,10 +1,10 @@
-use context::{DeviceContext, DeviceCtxRef};
-use device_ext::*;
-use device_memory::{
-  DeviceBufferRef, RawDeviceBuffer,
-  //SyncDeviceBuffer, SyncDeviceBufferRef, SyncDeviceBufferRefMut,
+use device::context::{DeviceContext, DeviceCtxRef};
+use device::ext::*;
+use device::linalg::*;
+use device::memory::{
+  DeviceBufferRef, DeviceBufferRefMut, RawDeviceBuffer,
 };
-use device_sync::{DeviceCondvarSource, DeviceCondvarSink, device_condvar_channel};
+use device::sync::{DeviceCondvarSource, DeviceCondvarSink, device_condvar_channel};
 use ffi::*;
 
 use cuda::runtime::{CudaEvent};
@@ -29,11 +29,12 @@ impl ReduceOp for i32 {
 
 impl ReduceOp for f32 {
   fn reduce<'ctx>(src: &RawDeviceBuffer<f32>, dst: &RawDeviceBuffer<f32>, ctx: &DeviceCtxRef<'ctx>) {
-    unsafe { array_cuda_map_add_f32(
+    /*unsafe { array_cuda_map_add_f32(
         src.as_ptr(), src.len() as c_int,
         dst.as_mut_ptr(),
         ctx.stream.ptr,
-    ) };
+    ) };*/
+    dst.async_vector_add(1.0, src, ctx);
   }
 }
 
@@ -83,20 +84,31 @@ impl<T> DeviceReduceWorker<T> where T: Copy + ReduceOp {
   }
 
   pub fn process(&mut self, input: &mut DeviceBufferRef<T>, ctx: &DeviceCtxRef) {
+    {
+      let tid = self.tid;
+      let depth = self.depth;
+      let &mut DeviceReduceWorker{
+        ref mut src_bufs, ref mut dst_bufs, .. } = self;
+
+      if depth >= 1 {
+        assert!(src_bufs[0].is_some());
+
+        ctx.sync();
+        self.barrier.wait();
+
+        let src_buf = src_bufs[0].as_ref().unwrap();
+        input.raw_send(src_buf, ctx);
+      }
+    }
+
+    self.communicate(ctx);
+  }
+
+  pub fn communicate(&mut self, ctx: &DeviceCtxRef) {
     let tid = self.tid;
     let depth = self.depth;
     let &mut DeviceReduceWorker{
       ref mut src_bufs, ref mut dst_bufs, .. } = self;
-
-    ctx.sync();
-    self.barrier.wait();
-
-    if depth >= 1 {
-      assert!(src_bufs[0].is_some());
-
-      let src_buf = src_bufs[0].as_ref().unwrap();
-      input.raw_send(src_buf, ctx);
-    }
 
     for d in (0 .. depth) {
       let r = 1 << (d + 1);
@@ -108,7 +120,7 @@ impl<T> DeviceReduceWorker<T> where T: Copy + ReduceOp {
 
         let src_buf = src_bufs[d].as_ref().unwrap();
         let dst_buf = dst_bufs[d].as_ref().unwrap();
-        src_buf.send(dst_buf, ctx);
+        src_buf.raw_send(dst_buf, ctx);
         ctx.sync();
       }
       self.barrier.wait();
@@ -117,8 +129,8 @@ impl<T> DeviceReduceWorker<T> where T: Copy + ReduceOp {
         assert!(src_bufs[d].is_some());
         assert!(dst_bufs[d].is_some());
 
-        let src_buf = src_bufs[d].as_ref().unwrap();
         let dst_buf = dst_bufs[d].as_ref().unwrap();
+        let mut src_buf = src_bufs[d].as_mut().unwrap();
         ReduceOp::reduce(dst_buf, src_buf, ctx);
         ctx.sync();
       }
@@ -140,7 +152,7 @@ impl<T> DeviceReduceWorker<T> where T: Copy + ReduceOp {
 pub struct DeviceAllReduceSharedData<T> where T: Copy + ReduceOp {
   nths:     usize,
   barrier:  Arc<Barrier>,
-  cv_sinks: Arc<RwLock<VecMap<Arc<Mutex<DeviceCondvarSink>>>>>,
+  cv_sinks: Arc<RwLock<VecMap<Arc<DeviceCondvarSink>>>>,
   bufs:     Vec<Arc<RawDeviceBuffer<T>>>,
 }
 
@@ -167,7 +179,7 @@ pub struct DeviceAllReduceWorker<T> where T: Copy + ReduceOp {
   depth:    usize,
   barrier:  Arc<Barrier>,
   cv_src:   DeviceCondvarSource,
-  cv_sinks: Arc<RwLock<VecMap<Arc<Mutex<DeviceCondvarSink>>>>>,
+  cv_sinks: Arc<RwLock<VecMap<Arc<DeviceCondvarSink>>>>,
   src_bufs: Vec<Option<Arc<RawDeviceBuffer<T>>>>,
   rd_bufs:  Vec<Option<Arc<RawDeviceBuffer<T>>>>,
   bc_bufs:  Vec<Option<Arc<RawDeviceBuffer<T>>>>,
@@ -207,7 +219,7 @@ impl<T> DeviceAllReduceWorker<T> where T: Copy + ReduceOp {
     let mut cv_sinks = shared.cv_sinks.clone();
     {
       let mut cv_sinks = cv_sinks.write().unwrap();
-      cv_sinks.insert(tid, Arc::new(Mutex::new(cv_sink)));
+      cv_sinks.insert(tid, Arc::new(cv_sink));
     }
     DeviceAllReduceWorker{
       tid:      tid,
@@ -223,21 +235,64 @@ impl<T> DeviceAllReduceWorker<T> where T: Copy + ReduceOp {
     }
   }
 
-  pub fn process(&mut self, input: &mut DeviceBufferRef<T>, ctx: &DeviceCtxRef) {
+  pub fn write(&mut self, offset: usize, input: &mut DeviceBufferRef<T>) -> usize {
+    let depth = self.depth;
+    let &mut DeviceAllReduceWorker{
+      ref mut src_bufs, .. } = self;
+
+    assert!(src_bufs[0].is_some());
+
+    input.ctx.sync();
+    self.barrier.wait();
+
+    let src_buf = src_bufs[0].as_ref().unwrap();
+    input.raw_send(src_buf, &input.ctx);
+
+    offset + input.len()
+  }
+
+  pub fn read(&mut self, offset: usize, output: &mut DeviceBufferRefMut<T>) -> usize {
+    let &mut DeviceAllReduceWorker{
+      ref mut src_bufs, .. } = self;
+
+    let amount = output.len();
+
+    let src_buf = src_bufs[0].as_ref().unwrap();
+    //input.raw_recv(src_buf, &input.ctx);
+
+    // TODO(20151218)
+    unimplemented!();
+  }
+
+  pub fn process(&mut self, input: &mut DeviceBufferRef<T>) {
+    {
+      let tid = self.tid;
+      let depth = self.depth;
+      let &mut DeviceAllReduceWorker{
+        ref mut src_bufs, ref mut rd_bufs, ref mut bc_bufs,
+        //ref cv_src, ref cv_sinks,
+        .. } = self;
+
+      if depth >= 1 {
+        assert!(src_bufs[0].is_some());
+
+        input.ctx.sync();
+        self.barrier.wait();
+
+        let src_buf = src_bufs[0].as_ref().unwrap();
+        input.raw_send(src_buf, &input.ctx);
+      }
+    }
+
+    self.communicate(&input.ctx);
+  }
+
+  pub fn communicate(&mut self, ctx: &DeviceCtxRef) {
     let tid = self.tid;
     let depth = self.depth;
     let &mut DeviceAllReduceWorker{
-      ref mut src_bufs, ref mut rd_bufs, ref mut bc_bufs, .. } = self;
-
-    ctx.sync();
-    self.barrier.wait();
-
-    if depth >= 1 {
-      assert!(src_bufs[0].is_some());
-
-      let src_buf = src_bufs[0].as_ref().unwrap();
-      input.raw_send(src_buf, ctx);
-    }
+      ref mut src_bufs, ref mut rd_bufs, ref mut bc_bufs,
+      .. } = self;
 
     for d in (0 .. depth) {
       let r = 1 << (d + 1);
@@ -249,7 +304,10 @@ impl<T> DeviceAllReduceWorker<T> where T: Copy + ReduceOp {
 
         let src_buf = src_bufs[d].as_ref().unwrap();
         let rd_buf = rd_bufs[d].as_ref().unwrap();
-        src_buf.send(rd_buf, ctx);
+        src_buf.raw_send(rd_buf, ctx);
+
+        //cv_src.notify(ctx);
+
         ctx.sync();
       }
       self.barrier.wait();
@@ -258,9 +316,15 @@ impl<T> DeviceAllReduceWorker<T> where T: Copy + ReduceOp {
         assert!(src_bufs[d].is_some());
         assert!(rd_bufs[d].is_some());
 
-        let src_buf = src_bufs[d].as_ref().unwrap();
+        /*let cv_sinks = cv_sinks.read().unwrap();
+        cv_sinks[tid + half_r].*/
+
         let rd_buf = rd_bufs[d].as_ref().unwrap();
+        let src_buf = src_bufs[d].as_ref().unwrap();
         ReduceOp::reduce(rd_buf, src_buf, ctx);
+
+        //cv_src.notify(ctx);
+
         ctx.sync();
       }
       self.barrier.wait();
@@ -273,7 +337,8 @@ impl<T> DeviceAllReduceWorker<T> where T: Copy + ReduceOp {
       if (tid % r) == 0 {
         let src_buf = src_bufs[d].as_ref().unwrap();
         let bc_buf = bc_bufs[d].as_ref().unwrap();
-        src_buf.send(bc_buf, ctx);
+        src_buf.raw_send(bc_buf, ctx);
+
         ctx.sync();
       }
       self.barrier.wait();

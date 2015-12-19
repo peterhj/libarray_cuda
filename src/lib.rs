@@ -1,6 +1,7 @@
 //#![feature(arc_counts)]
 #![feature(optin_builtin_traits)]
 #![feature(unique)]
+//#![feature(zero_one)]
 
 extern crate array_new;
 extern crate cuda;
@@ -13,12 +14,6 @@ extern crate libc;
 extern crate rand;
 extern crate vec_map;
 
-pub mod context;
-pub mod device_array;
-pub mod device_comm;
-pub mod device_ext;
-pub mod device_linalg;
-pub mod device_memory;
-pub mod device_sync;
+pub mod device;
 pub mod ffi;
 pub mod host_memory;

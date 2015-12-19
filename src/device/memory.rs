@@ -1,5 +1,5 @@
-use context::{DeviceCtxRef};
-use device_ext::{DeviceBytesExt, DeviceNumExt};
+use device::context::{DeviceCtxRef};
+use device::ext::{DeviceBytesExt, DeviceNumExt};
 use host_memory::{HostBufferRef};
 
 use cuda::ffi::runtime::{
@@ -17,7 +17,7 @@ use std::marker::{PhantomData};
 use std::mem::{size_of};
 use std::ptr::{null_mut};
 use std::rc::{Rc};
-use std::sync::{Arc, Mutex, MutexGuard};
+//use std::sync::{Arc, Mutex, MutexGuard};
 
 const WARP_SIZE: usize = 128;
 
@@ -97,6 +97,19 @@ impl<T> DeviceBuffer<T> where T: Copy {
     }
   }
 
+  pub fn borrow_range<'ctx>(&mut self, from: usize, to: usize, ctx: &'ctx DeviceCtxRef) -> DeviceBufferRef<'ctx, T> {
+    assert!(to - from <= self.len);
+    ctx.stream.wait_event(&self.dev_sync).unwrap();
+    DeviceBufferRef{
+      ctx:  ctx,
+      dev_sync: self.dev_sync.clone(),
+      dev_idx:  self.dev_idx,
+      dptr: unsafe { (self.dptr as *const T).offset(from as isize) },
+      len:  to - from,
+      size: (to - from) * size_of::<T>(),
+    }
+  }
+
   pub fn borrow_mut<'ctx>(&mut self, ctx: &'ctx DeviceCtxRef) -> DeviceBufferRefMut<'ctx, T> {
     ctx.stream.wait_event(&self.dev_sync).unwrap();
     DeviceBufferRefMut{
@@ -108,10 +121,27 @@ impl<T> DeviceBuffer<T> where T: Copy {
       size: self.size,
     }
   }
+
+  pub fn borrow_mut_range<'ctx>(&mut self, from: usize, to: usize, ctx: &'ctx DeviceCtxRef) -> DeviceBufferRefMut<'ctx, T> {
+    assert!(to - from <= self.len);
+    ctx.stream.wait_event(&self.dev_sync).unwrap();
+    DeviceBufferRefMut{
+      ctx:  ctx,
+      dev_sync: self.dev_sync.clone(),
+      dev_idx:  self.dev_idx,
+      dptr: unsafe { self.dptr.offset(from as isize) },
+      len:  to - from,
+      size: (to - from) * size_of::<T>(),
+    }
+  }
 }
 
-impl DeviceBuffer<u8> {
-  pub fn zeros(len: usize, ctx: &DeviceCtxRef) -> DeviceBuffer<u8> {
+pub trait DeviceZeroExt<T> where T: Copy {
+  fn zeros(len: usize, ctx: &DeviceCtxRef) -> Self;
+}
+
+impl DeviceZeroExt<u8> for DeviceBuffer<u8> {
+  fn zeros(len: usize, ctx: &DeviceCtxRef) -> DeviceBuffer<u8> {
     let mut buf = unsafe { Self::new(len, ctx) };
     {
       let mut buf_ref = buf.borrow_mut(ctx);
@@ -121,8 +151,8 @@ impl DeviceBuffer<u8> {
   }
 }
 
-impl DeviceBuffer<i32> {
-  pub fn zeros(len: usize, ctx: &DeviceCtxRef) -> DeviceBuffer<i32> {
+impl DeviceZeroExt<i32> for DeviceBuffer<i32> {
+  fn zeros(len: usize, ctx: &DeviceCtxRef) -> DeviceBuffer<i32> {
     let mut buf = unsafe { Self::new(len, ctx) };
     {
       let mut buf_ref = buf.borrow_mut(ctx);
@@ -132,8 +162,8 @@ impl DeviceBuffer<i32> {
   }
 }
 
-impl DeviceBuffer<f32> {
-  pub fn zeros(len: usize, ctx: &DeviceCtxRef) -> DeviceBuffer<f32> {
+impl DeviceZeroExt<u32> for DeviceBuffer<f32> {
+  fn zeros(len: usize, ctx: &DeviceCtxRef) -> DeviceBuffer<f32> {
     let mut buf = unsafe { Self::new(len, ctx) };
     {
       let mut buf_ref = buf.borrow_mut(ctx);
@@ -346,7 +376,7 @@ impl<T> RawDeviceBuffer<T> where T: Copy {
     self.dptr
   }
 
-  pub fn send<'ctx>(&self, other: &RawDeviceBuffer<T>, ctx: &DeviceCtxRef<'ctx>) {
+  pub fn raw_send<'ctx>(&self, other: &RawDeviceBuffer<T>, ctx: &DeviceCtxRef<'ctx>) {
     assert_eq!(self.len, other.len);
     assert_eq!(self.size, other.size);
     if self.dev_idx == other.dev_idx {
@@ -367,6 +397,38 @@ impl<T> RawDeviceBuffer<T> where T: Copy {
           &ctx.stream,
       ) };
     }
+  }
+
+  pub fn as_ref_range<'a>(&'a self, from: usize, to: usize) -> RawDeviceBufferRef<'a, T> {
+    RawDeviceBufferRef{
+      dev_idx:  self.dev_idx,
+      dptr: unsafe { self.dptr.offset(from as isize) },
+      len:  to - from,
+      size: (to - from) * size_of::<T>(),
+      _marker:  PhantomData,
+    }
+  }
+}
+
+pub struct RawDeviceBufferRef<'a, T> where T: Copy {
+  dev_idx:  usize,
+  dptr: *mut T,
+  len:  usize,
+  size: usize,
+  _marker:  PhantomData<&'a ()>,
+}
+
+impl<'a, T> RawDeviceBufferRef<'a, T> where T: Copy {
+  pub fn len(&self) -> usize {
+    self.len
+  }
+
+  pub unsafe fn as_ptr(&self) -> *const T {
+    self.dptr as *const T
+  }
+
+  pub unsafe fn as_mut_ptr(&self) -> *mut T {
+    self.dptr
   }
 }
 

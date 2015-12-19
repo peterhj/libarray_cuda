@@ -2,18 +2,21 @@ extern crate array_cuda;
 extern crate scoped_threadpool;
 extern crate time;
 
-use array_cuda::context::{DeviceContext};
-use array_cuda::device_comm::{DeviceAllReduceSharedData, DeviceAllReduceWorker};
-use array_cuda::device_ext::*;
-use array_cuda::device_memory::{DeviceBuffer, RawDeviceBuffer};
+use array_cuda::device::comm::{DeviceAllReduceSharedData, DeviceAllReduceWorker};
+use array_cuda::device::context::{DeviceContext};
+use array_cuda::device::ext::*;
+use array_cuda::device::memory::{DeviceBuffer, RawDeviceBuffer};
 use scoped_threadpool::{Pool};
 
 use std::sync::{Arc, Barrier};
 use time::{PreciseTime};
 
 fn main() {
-  let n = 6 * 1024 * 1024;
-  let num_threads = 8;
+  //let n = 1 * 1024 * 1024;
+  //let n = 6 * 1024 * 1024;
+  let n = 49 * 1024 * 1024;
+  //let n = 49 * 1024 * 1024 / 4;
+  let num_threads = 4;
   let mut pool = Pool::new(num_threads as u32);
   pool.scoped(|scope| {
     let mut ctxs = vec![];
@@ -35,12 +38,16 @@ fn main() {
           let mut input = input.borrow_mut(&ctx);
           input.set_constant(1.0);
         }
-        let mut input = input.borrow(&ctx);
         let ntrials = 100;
+        ctx.sync();
         let start_time = PreciseTime::now();
-        for _ in (0 .. ntrials) {
-          allreduce.process(&mut input, &ctx);
+        {
+          let mut input = input.borrow(&ctx);
+          for _ in (0 .. ntrials) {
+            allreduce.process(&mut input);
+          }
         }
+        ctx.sync();
         let stop_time = PreciseTime::now();
         let elapsed = start_time.to(stop_time);
         let elapsed_ns = elapsed.num_nanoseconds().unwrap();

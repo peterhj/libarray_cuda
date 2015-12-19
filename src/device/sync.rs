@@ -1,4 +1,4 @@
-use context::{DeviceCtxRef};
+use device::context::{DeviceCtxRef};
 
 use cuda::runtime::{OwnedCudaEvent, SharedCudaEvent};
 
