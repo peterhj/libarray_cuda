@@ -178,15 +178,15 @@ pub struct DeviceAllReduceWorker<T> where T: Copy + ReduceOp {
   width:    usize,
   depth:    usize,
   barrier:  Arc<Barrier>,
-  cv_src:   DeviceCondvarSource,
-  cv_sinks: Arc<RwLock<VecMap<Arc<DeviceCondvarSink>>>>,
+  /*cv_src:   DeviceCondvarSource,
+  cv_sinks: Arc<RwLock<VecMap<Arc<DeviceCondvarSink>>>>,*/
   src_bufs: Vec<Option<Arc<RawDeviceBuffer<T>>>>,
   rd_bufs:  Vec<Option<Arc<RawDeviceBuffer<T>>>>,
   bc_bufs:  Vec<Option<Arc<RawDeviceBuffer<T>>>>,
 }
 
 impl<T> DeviceAllReduceWorker<T> where T: Copy + ReduceOp {
-  pub fn new(tid: usize, shared: Arc<DeviceAllReduceSharedData<T>>, ctx: &DeviceCtxRef) -> DeviceAllReduceWorker<T> {
+  pub fn new(tid: usize, shared: &DeviceAllReduceSharedData<T>, ctx: &DeviceCtxRef) -> DeviceAllReduceWorker<T> {
     let num_threads = shared.nths;
     assert_eq!(2 * num_threads, shared.bufs.len());
     let width = num_threads.checked_next_power_of_two().unwrap();
@@ -215,20 +215,20 @@ impl<T> DeviceAllReduceWorker<T> where T: Copy + ReduceOp {
     }
     assert_eq!(src_bufs.len(), rd_bufs.len());
     assert_eq!(src_bufs.len(), bc_bufs.len());
-    let (cv_src, cv_sink) = device_condvar_channel(ctx);
+    /*let (cv_src, cv_sink) = device_condvar_channel(ctx);
     let mut cv_sinks = shared.cv_sinks.clone();
     {
       let mut cv_sinks = cv_sinks.write().unwrap();
       cv_sinks.insert(tid, Arc::new(cv_sink));
-    }
+    }*/
     DeviceAllReduceWorker{
       tid:      tid,
       nths:     num_threads,
       width:    width,
       depth:    depth,
       barrier:  shared.barrier.clone(),
-      cv_src:   cv_src,
-      cv_sinks: cv_sinks,
+      /*cv_src:   cv_src,
+      cv_sinks: cv_sinks,*/
       src_bufs: src_bufs,
       rd_bufs:  rd_bufs,
       bc_bufs:  bc_bufs,
