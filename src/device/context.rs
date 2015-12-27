@@ -185,8 +185,10 @@ impl<'ctx> DeviceCtxRef<'ctx> {
   }
 
   pub fn blocking_sync(&self) {
-    // TODO(20151212)
-    self.ctx.dev_sync.record(&self.stream).unwrap();
-    self.ctx.dev_sync.synchronize().unwrap();
+    // TODO(20151227)
+    /*self.ctx.dev_sync.record(&self.stream).unwrap();
+    self.ctx.dev_sync.synchronize().unwrap();*/
+    self.ctx.stream.synchronize()
+      .ok().expect("failed to synchronize cuda stream!");
   }
 }

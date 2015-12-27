@@ -6,6 +6,12 @@ use array_new::{
   Array2dView, Array2dViewMut,
   Array3dView, Array3dViewMut,
 };
+use cuda::runtime::{
+  CudaMemcpyKind,
+  cuda_memcpy_async,
+};
+
+use std::mem::{size_of};
 
 pub struct DeviceArray2d<T> where T: Copy {
   data:     DeviceBuffer<T>,
@@ -119,8 +125,19 @@ impl<'a, T> DeviceArray2dView<'a, T> where T: 'a + Copy {
 
 impl<'a, T> DeviceArray2dView<'a, T> where T: 'a + Copy {
   pub fn sync_store(&self, dst: &mut Array2dViewMut<'a, T>) {
-    // TODO(20151218)
-    unimplemented!();
+    assert_eq!(self.bound, dst.bound());
+    if self.bound == dst.bound() {
+      unsafe { cuda_memcpy_async(
+          dst.as_mut_ptr() as *mut u8,
+          self.as_ptr() as *const u8,
+          self.bound.len() * size_of::<T>(),
+          CudaMemcpyKind::DeviceToHost,
+          &self.data.ctx.stream,
+      ) }.unwrap();
+      self.data.ctx.blocking_sync();
+    } else {
+      unimplemented!();
+    }
   }
 }
 
@@ -159,8 +176,19 @@ impl<'a, T> ArrayViewMut<'a, T, (usize, usize)> for DeviceArray2dViewMut<'a, T> 
 
 impl<'a, T> DeviceArray2dViewMut<'a, T> where T: 'a + Copy {
   pub fn sync_load(&mut self, src: &Array2dView<'a, T>) {
-    // TODO(20151218)
-    unimplemented!();
+    assert_eq!(self.bound, src.bound());
+    if self.bound == src.bound() {
+      unsafe { cuda_memcpy_async(
+          self.as_mut_ptr() as *mut u8,
+          src.as_ptr() as *const u8,
+          self.bound.len() * size_of::<T>(),
+          CudaMemcpyKind::HostToDevice,
+          &self.data.ctx.stream,
+      ) }.unwrap();
+      self.data.ctx.blocking_sync();
+    } else {
+      unimplemented!();
+    }
   }
 }
 

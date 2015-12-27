@@ -7,9 +7,10 @@ use device::memory::{
 use device::sync::{DeviceCondvarSource, DeviceCondvarSink, device_condvar_channel};
 use ffi::*;
 
-use cuda::runtime::{CudaEvent};
+use cuda::runtime::{CudaDevice, CudaEvent};
 
 use libc::{c_int};
+use std::cmp::{min};
 use std::sync::{Arc, Barrier, Mutex, RwLock};
 use vec_map::{VecMap};
 
@@ -36,6 +37,15 @@ impl ReduceOp for f32 {
     ) };*/
     dst.async_vector_add(1.0, src, ctx);
   }
+}
+
+pub fn for_all_devices<F, V>(limit: usize, mut f: F) -> V where F: FnMut(&[DeviceContext]) -> V {
+  let mut contexts = vec![];
+  for dev_idx in (0 .. min(limit, CudaDevice::count().unwrap())) {
+    let context = DeviceContext::new(dev_idx);
+    contexts.push(context);
+  }
+  f(&contexts)
 }
 
 pub struct DeviceReduceWorker<T> where T: Copy + ReduceOp {
@@ -177,7 +187,7 @@ pub struct DeviceAllReduceWorker<T> where T: Copy + ReduceOp {
   nths:     usize,
   width:    usize,
   depth:    usize,
-  barrier:  Arc<Barrier>,
+  pub barrier:  Arc<Barrier>,
   /*cv_src:   DeviceCondvarSource,
   cv_sinks: Arc<RwLock<VecMap<Arc<DeviceCondvarSink>>>>,*/
   src_bufs: Vec<Option<Arc<RawDeviceBuffer<T>>>>,
@@ -233,6 +243,10 @@ impl<T> DeviceAllReduceWorker<T> where T: Copy + ReduceOp {
       rd_bufs:  rd_bufs,
       bc_bufs:  bc_bufs,
     }
+  }
+
+  pub fn num_workers(&self) -> usize {
+    self.nths
   }
 
   pub fn write(&mut self, offset: usize, input: &mut DeviceBufferRef<T>) -> usize {
