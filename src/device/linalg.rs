@@ -69,9 +69,9 @@ impl<'ctx> AsyncBlasVectorExt<'ctx> for RawDeviceBuffer<f32> {
 
   fn async_vector_add(&self, alpha: f32, x: &RawDeviceBuffer<f32>, ctx: &'ctx DeviceCtxRef<'ctx>) {
     assert_eq!(self.len(), x.len());
-    ctx.blas.set_pointer_mode(CublasPointerMode::Host);
+    ctx.get_blas().set_pointer_mode(CublasPointerMode::Host);
     unsafe { cublas_saxpy(
-        &ctx.blas,
+        &*ctx.get_blas(),
         self.len(),
         alpha,
         x.as_ptr(), 1,
@@ -88,9 +88,9 @@ impl<'a> BlasVectorExt for DeviceArray2dViewMut<'a, f32> {
     let (m, n) = self.bound();
     assert_eq!(m, 1);
     let incx = self.stride();
-    self.data.ctx.blas.set_pointer_mode(CublasPointerMode::Host);
+    self.data.ctx.get_blas().set_pointer_mode(CublasPointerMode::Host);
     unsafe { cublas_sscal(
-        &self.data.ctx.blas,
+        &*self.data.ctx.get_blas(),
         n,
         alpha,
         self.as_mut_ptr(), incx,
@@ -106,9 +106,9 @@ impl<'a> BlasVectorExt for DeviceArray2dViewMut<'a, f32> {
     let incy = self.stride();
     let incx = x.stride();
 
-    self.data.ctx.blas.set_pointer_mode(CublasPointerMode::Host);
+    self.data.ctx.get_blas().set_pointer_mode(CublasPointerMode::Host);
     unsafe { cublas_saxpy(
-        &self.data.ctx.blas,
+        &*self.data.ctx.get_blas(),
         n,
         alpha,
         x.as_ptr(), incx,
@@ -131,9 +131,9 @@ impl<'a> BlasMatrixExt for DeviceArray2dViewMut<'a, f32> {
 
   fn matrix_scale(&mut self, alpha: f32) {
     if self.bound().0 == self.stride() {
-      self.data.ctx.blas.set_pointer_mode(CublasPointerMode::Host);
+      self.data.ctx.get_blas().set_pointer_mode(CublasPointerMode::Host);
       unsafe { cublas_sscal(
-          &self.data.ctx.blas,
+          &*self.data.ctx.get_blas(),
           self.bound().len(),
           alpha,
           self.as_mut_ptr(), 1,
@@ -149,9 +149,9 @@ impl<'a> BlasMatrixExt for DeviceArray2dViewMut<'a, f32> {
     assert_eq!(n, x_n);
     assert_eq!(m, x_m);
     if self.bound().0 == self.stride() && x.bound().0 == x.stride() {
-      self.data.ctx.blas.set_pointer_mode(CublasPointerMode::Host);
+      self.data.ctx.get_blas().set_pointer_mode(CublasPointerMode::Host);
       unsafe { cublas_saxpy(
-          &self.data.ctx.blas,
+          &*self.data.ctx.get_blas(),
           m * n,
           alpha,
           x.as_ptr(), 1,
@@ -187,9 +187,9 @@ impl<'a> BlasMatrixExt for DeviceArray2dViewMut<'a, f32> {
     let ldb = b.stride();
     let ldc = self.stride();
 
-    self.data.ctx.blas.set_pointer_mode(CublasPointerMode::Host);
+    self.data.ctx.get_blas().set_pointer_mode(CublasPointerMode::Host);
     unsafe { cublas_sgemm(
-        &self.data.ctx.blas,
+        &*self.data.ctx.get_blas(),
         trans_a.to_cublas(), trans_b.to_cublas(),
         m, n, k,
         alpha,
