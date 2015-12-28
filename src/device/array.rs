@@ -27,7 +27,7 @@ where 'ctx: 'a, T: 'a + Copy {
 
   fn as_view(&'a mut self, ctx: &'a DeviceCtxRef<'ctx>) -> DeviceArray2dView<'a, T> {
     DeviceArray2dView{
-      data:     self.data.borrow(ctx),
+      data:     self.data.as_ref(ctx),
       bound:    self.bound,
       stride:   self.stride,
     }
@@ -35,7 +35,7 @@ where 'ctx: 'a, T: 'a + Copy {
 
   fn as_view_mut(&'a mut self, ctx: &'a DeviceCtxRef<'ctx>) -> DeviceArray2dViewMut<'a, T> {
     DeviceArray2dViewMut{
-      data:     self.data.borrow_mut(ctx),
+      data:     self.data.as_ref_mut(ctx),
       bound:    self.bound,
       stride:   self.stride,
     }

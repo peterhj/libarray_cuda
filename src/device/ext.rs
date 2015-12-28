@@ -22,6 +22,33 @@ impl<'ctx> DeviceBytesExt for DeviceBufferRefMut<'ctx, u8> {
   }
 }
 
+pub trait DeviceCastBytesExt<T> {
+  type Ref;
+
+  fn cast_bytes(&self, dst: &mut Self::Ref);
+  fn cast_bytes_normalized(&self, dst: &mut Self::Ref);
+}
+
+impl<'ctx> DeviceCastBytesExt<f32> for DeviceBufferRef<'ctx, u8> {
+  type Ref = DeviceBufferRefMut<'ctx, f32>;
+
+  fn cast_bytes(&self, dst: &mut DeviceBufferRefMut<'ctx, f32>) {
+    unsafe { array_cuda_map_cast_u8_to_f32_vec(
+        self.as_ptr(), self.len() as i32,
+        dst.as_mut_ptr(),
+        self.ctx.stream.ptr,
+    ) };
+  }
+
+  fn cast_bytes_normalized(&self, dst: &mut DeviceBufferRefMut<'ctx, f32>) {
+    unsafe { array_cuda_map_cast_u8_to_f32_vec_norm(
+        self.as_ptr(), self.len() as i32,
+        dst.as_mut_ptr(),
+        self.ctx.stream.ptr,
+    ) };
+  }
+}
+
 pub trait DeviceNumExt<T> {
   type Ref;
 
