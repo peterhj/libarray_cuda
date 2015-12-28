@@ -5,7 +5,7 @@ extern crate time;
 use array_cuda::device::comm::{DeviceAllReduceSharedData, DeviceAllReduceWorker};
 use array_cuda::device::context::{DeviceContext};
 use array_cuda::device::ext::*;
-use array_cuda::device::memory::{DeviceBuffer, RawDeviceBuffer};
+use array_cuda::device::memory::{DeviceZeroExt, DeviceBuffer, RawDeviceBuffer};
 use scoped_threadpool::{Pool};
 
 use std::sync::{Arc, Barrier};
@@ -32,7 +32,7 @@ fn main() {
         println!("thread {}: hello world!", tid);
         let context = DeviceContext::new(tid);
         let ctx = context.as_ref();
-        let mut allreduce = DeviceAllReduceWorker::<f32>::new(tid, allreduce_shared, &ctx);
+        let mut allreduce = DeviceAllReduceWorker::<f32>::new(tid, &*allreduce_shared, &ctx);
         let mut input = DeviceBuffer::zeros(n, &ctx);
         {
           let mut input = input.borrow_mut(&ctx);

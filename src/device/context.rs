@@ -8,6 +8,7 @@ use cuda_sparse::{CusparseHandle};
 use rand::{Rng, thread_rng};
 use std::cell::{RefCell, Ref};
 use std::ops::{Deref};
+use std::rc::{Rc};
 use std::sync::{Once, ONCE_INIT};
 
 static DEVICE_CONTEXT_INIT: Once = ONCE_INIT;
@@ -58,7 +59,7 @@ impl DeviceCtxEvent {
   }
 }
 
-/*pub struct DeviceContext {
+pub struct OldDeviceContext {
   dev_idx:    usize,
   dev_sync:   CudaEvent,
 
@@ -69,8 +70,8 @@ impl DeviceCtxEvent {
   pub sparse: CusparseHandle,
 }
 
-impl DeviceContext {
-  pub fn new(dev_idx: usize) -> DeviceContext {
+impl OldDeviceContext {
+  pub fn new(dev_idx: usize) -> OldDeviceContext {
     DEVICE_CONTEXT_INIT.call_once(|| {
       // TODO(20151211): see notes in cuda docs:
       // <http://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__PEER.html>
@@ -134,7 +135,7 @@ impl DeviceContext {
     sparse.set_stream(&stream)
       .ok().expect("failed to set stream for cusparse handle!");
 
-    DeviceContext{
+    OldDeviceContext{
       dev_idx:  dev_idx,
       dev_sync: dev_sync,
       stream: stream,
@@ -158,7 +159,19 @@ impl DeviceContext {
     unsafe { self.set_device() };
     DeviceCtxRef{ctx: self}
   }*/
-}*/
+}
+
+// XXX(20151228): DeviceContext is implemented such that the current CUDA device
+// is set upon acquiring a DeviceCtxRef. Therefore there should only be at most
+// one outstanding DeviceCtxRef in a thread. We can achieve it by giving each
+// DeviceCtxRef some sort of exclusive reference to a DriverContext.
+
+thread_local!(static DRIVER_CONTEXT: Rc<DriverContext> = Rc::new(DriverContext));
+
+pub struct DriverContext;
+
+impl !Send for DriverContext {}
+impl !Sync for DriverContext {}
 
 pub type DeviceContext = LazyDeviceContext;
 
@@ -196,7 +209,7 @@ impl LazyDeviceContext {
           }
         }
       }
-      println!("DEBUG: cuda peer access pairs: {:?}", peer_pairs);
+      //println!("DEBUG: cuda peer access pairs: {:?}", peer_pairs);
     });
 
     match CudaDevice::set_current(dev_idx) {
@@ -212,17 +225,7 @@ impl LazyDeviceContext {
     let dev_sync = CudaEvent::create_fastest()
       .ok().expect("failed to create blocking sync event!");
 
-    /*let blas = CublasHandle::create()
-      .ok().expect("failed to create cublas handle!");
-    blas.set_stream(&stream)
-      .ok().expect("failed to set stream for cublas handle!");
-
-    let dnn = CudnnHandle::create()
-      .ok().expect("failed to create cudnn handle!");
-    dnn.set_stream(&stream)
-      .ok().expect("failed to set stream for cudnn handle!");
-
-    let rng = CurandGenerator::create()
+    /*let rng = CurandGenerator::create()
       .ok().expect("failed to create curand generator!");
     rng.set_stream(&stream)
       .ok().expect("failed to set stream for curand generator!");
@@ -258,12 +261,19 @@ impl LazyDeviceContext {
 
   pub fn as_ref<'ctx>(&'ctx self) -> DeviceCtxRef<'ctx> {
     unsafe { self.set_device() };
-    DeviceCtxRef{ctx: self}
+    //DeviceCtxRef{ctx: self, driver: None}
+    DRIVER_CONTEXT.with(|driver| {
+      let driver = driver.clone();
+      assert!(Rc::strong_count(&driver) <= 2,
+          "DeviceCtxRef requires exclusive reference to DriverContext!");
+      DeviceCtxRef{ctx: self, driver: driver}
+    })
   }
 }
 
 pub struct DeviceCtxRef<'ctx> {
-  ctx:  &'ctx LazyDeviceContext,
+  ctx:      &'ctx LazyDeviceContext,
+  driver:   Rc<DriverContext>,
 }
 
 impl<'ctx> Deref for DeviceCtxRef<'ctx> {

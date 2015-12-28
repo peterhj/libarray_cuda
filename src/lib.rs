@@ -1,6 +1,7 @@
 //#![feature(arc_counts)]
 #![feature(cell_extras)]
 #![feature(optin_builtin_traits)]
+#![feature(rc_counts)]
 #![feature(unique)]
 //#![feature(zero_one)]
 
