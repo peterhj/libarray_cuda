@@ -1,5 +1,8 @@
 //use cuda::ffi::runtime::{cudaDeviceFlags};
-use cuda::runtime::{CudaDevice, CudaStream, CudaEvent, /*CudaEventStatus*/};
+use cuda::runtime::{
+  CudaDevice, CudaStream, CudaEvent, /*CudaEventStatus*/
+  OwnedCudaEvent, SharedCudaEvent,
+};
 use cuda_blas::{CublasHandle};
 use cuda_dnn::v3::{CudnnHandle};
 use cuda_rand::{CurandGenerator};
@@ -9,7 +12,8 @@ use rand::{Rng, thread_rng};
 use std::cell::{RefCell, Ref};
 use std::ops::{Deref};
 use std::rc::{Rc};
-use std::sync::{Once, ONCE_INIT};
+use std::sync::{Arc, Once, ONCE_INIT};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 static DEVICE_CONTEXT_INIT: Once = ONCE_INIT;
 
@@ -35,6 +39,7 @@ impl DeviceCtxEvent {
   }
 
   pub fn produce(&mut self, ctx: &DeviceCtxRef) {
+    assert_eq!(self.dev_idx, ctx.device());
     match self.state {
       EventState::Produce => {
         self.dev_sync.record(&ctx.stream).unwrap();
@@ -55,6 +60,97 @@ impl DeviceCtxEvent {
         ctx.stream.wait_event(&self.dev_sync).unwrap();
         self.state = EventState::Produce;
       }
+    }
+  }
+}
+
+pub struct DeviceCtxEventProducer {
+  dev_idx:      usize,
+  dev_event:    OwnedCudaEvent,
+  state:        Arc<AtomicUsize>,
+}
+
+impl DeviceCtxEventProducer {
+  pub fn channel(ctx: &DeviceCtxRef) -> (DeviceCtxEventProducer, DeviceCtxEventConsumer) {
+    let dev_idx = ctx.device();
+    let owned_event = OwnedCudaEvent::create_fastest().unwrap();
+    let shared_event = owned_event.share();
+    let state = Arc::new(AtomicUsize::new(0));
+    (DeviceCtxEventProducer{
+      dev_idx:      dev_idx,
+      dev_event:    owned_event,
+      state:        state.clone(),
+    },
+    DeviceCtxEventConsumer{
+      dev_idx:      dev_idx,
+      dev_event:    shared_event,
+      state:        state,
+    })
+  }
+
+  pub fn device(&self) -> usize {
+    self.dev_idx
+  }
+
+  pub fn try_produce(&self, ctx: &DeviceCtxRef) -> Result<(), ()> {
+    assert_eq!(self.dev_idx, ctx.device());
+    let state = self.state.load(Ordering::Acquire);
+    match state {
+      0 => {
+        self.dev_event.record(&ctx.stream).unwrap();
+        self.state.store(1, Ordering::Release);
+        Ok(())
+      }
+      1 => {
+        Err(())
+      }
+      _ => unreachable!(),
+    }
+  }
+
+  pub fn produce(&self, ctx: &DeviceCtxRef) {
+    while self.try_produce(ctx).is_err() {
+    }
+  }
+
+  /*pub fn ready(&self) {
+    loop {
+      let state = self.state.load(Ordering::Acquire);
+      match state {
+        0 => {
+          break;
+        }
+        1 => {}
+        _ => unreachable!(),
+      }
+    }
+  }*/
+}
+
+pub struct DeviceCtxEventConsumer {
+  dev_idx:      usize,
+  dev_event:    SharedCudaEvent,
+  state:        Arc<AtomicUsize>,
+}
+
+impl DeviceCtxEventConsumer {
+  pub fn try_consume(&self, ctx: &DeviceCtxRef) -> Result<(), ()> {
+    let state = self.state.load(Ordering::Acquire);
+    match state {
+      0 => {
+        Err(())
+      }
+      1 => {
+        ctx.stream.wait_shared_event(&self.dev_event).unwrap();
+        self.state.store(0, Ordering::Release);
+        Ok(())
+      }
+      _ => unreachable!(),
+    }
+  }
+
+  pub fn consume(&self, ctx: &DeviceCtxRef) {
+    while self.try_consume(ctx).is_err() {
     }
   }
 }

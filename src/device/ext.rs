@@ -52,7 +52,7 @@ impl<'ctx> DeviceCastBytesExt<f32> for DeviceBufferRef<'ctx, u8> {
 pub trait DeviceNumExt<T> {
   type Ref;
 
-  //fn print(&mut self);
+  fn print(&mut self);
   fn set_constant(&mut self, c: T);
   fn add(&mut self, other: &Self::Ref);
 }
@@ -60,12 +60,12 @@ pub trait DeviceNumExt<T> {
 impl<'ctx> DeviceNumExt<i32> for DeviceBufferRefMut<'ctx, i32> {
   type Ref = DeviceBufferRef<'ctx, i32>;
 
-  /*fn print(&mut self) {
+  fn print(&mut self) {
     unsafe { array_cuda_map_print_i32(
         self.as_ptr(), self.len() as c_int,
         self.ctx.stream.ptr,
     ) };
-  }*/
+  }
 
   fn set_constant(&mut self, c: i32) {
     unsafe { array_cuda_map_set_constant_i32(
@@ -87,9 +87,12 @@ impl<'ctx> DeviceNumExt<i32> for DeviceBufferRefMut<'ctx, i32> {
 impl<'ctx> DeviceNumExt<f32> for DeviceBufferRefMut<'ctx, f32> {
   type Ref = DeviceBufferRef<'ctx, f32>;
 
-  /*fn print(&mut self) {
-    unimplemented!();
-  }*/
+  fn print(&mut self) {
+    unsafe { array_cuda_map_print_f32(
+        self.as_ptr(), self.len() as c_int,
+        self.ctx.stream.ptr,
+    ) };
+  }
 
   fn set_constant(&mut self, c: f32) {
     unsafe { array_cuda_map_set_constant_f32(
@@ -110,6 +113,10 @@ impl<'ctx> DeviceNumExt<f32> for DeviceBufferRefMut<'ctx, f32> {
 
 impl<'ctx> DeviceNumExt<f32> for DeviceArray2dViewMut<'ctx, f32> {
   type Ref = DeviceArray2dView<'ctx, f32>;
+
+  fn print(&mut self) {
+    unimplemented!();
+  }
 
   fn set_constant(&mut self, c: f32) {
     unsafe { array_cuda_map_set_constant_f32(

@@ -98,7 +98,8 @@ impl<T> DeviceBuffer<T> where T: Copy {
   }
 
   pub fn as_ref_range<'ctx>(&mut self, from: usize, to: usize, ctx: &'ctx DeviceCtxRef) -> DeviceBufferRef<'ctx, T> {
-    assert!(to - from <= self.len);
+    assert!(from <= self.len);
+    assert!(to <= self.len);
     ctx.stream.wait_event(&self.dev_sync).unwrap();
     DeviceBufferRef{
       ctx:  ctx,
@@ -123,7 +124,8 @@ impl<T> DeviceBuffer<T> where T: Copy {
   }
 
   pub fn as_ref_mut_range<'ctx>(&mut self, from: usize, to: usize, ctx: &'ctx DeviceCtxRef) -> DeviceBufferRefMut<'ctx, T> {
-    assert!(to - from <= self.len);
+    assert!(from <= self.len);
+    assert!(to <= self.len);
     ctx.stream.wait_event(&self.dev_sync).unwrap();
     DeviceBufferRefMut{
       ctx:  ctx,
@@ -285,6 +287,27 @@ impl<'ctx, T> DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
     } else {
       // TODO(20151211)
       unimplemented!();
+    }
+  }
+
+  pub fn raw_recv(&mut self, src: &RawDeviceBuffer<T>) {
+    assert_eq!(self.len, src.len);
+    assert_eq!(self.size, src.size);
+    if self.dev_idx == src.dev_idx {
+      unsafe { cuda_memcpy_async(
+          self.as_mut_ptr() as *mut u8,
+          src.as_ptr() as *const u8,
+          self.size,
+          CudaMemcpyKind::DeviceToDevice,
+          &self.ctx.stream,
+      ) }.unwrap();
+    } else {
+      unsafe { cuda_memcpy_peer_async(
+          self.as_mut_ptr() as *mut u8, self.dev_idx,
+          src.as_ptr() as *const u8, src.dev_idx,
+          self.size,
+          &self.ctx.stream,
+      ) };
     }
   }
 

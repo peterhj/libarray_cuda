@@ -9,7 +9,7 @@ __global__ void map_print_i32_kernel(
 {
   int i = threadIdx.x + blockIdx.x * blockDim.x;
   if (i < n) {
-    printf("DEBUG: print: %d %d\n", i, src[i]);
+    printf("DEBUG: print: [%d] %d\n", i, src[i]);
   }
 }
 
@@ -18,7 +18,24 @@ extern "C" void array_cuda_map_print_i32(
     cudaStream_t stream)
 {
   map_print_i32_kernel<<<(n+1024-1)/1024, 1024, 0, stream>>>(
-      src, n);
+      src, 32);
+}
+
+__global__ void map_print_f32_kernel(
+    const float *src, int n)
+{
+  int i = threadIdx.x + blockIdx.x * blockDim.x;
+  if (i < n) {
+    printf("DEBUG: print: [%d] %g\n", i, src[i]);
+  }
+}
+
+extern "C" void array_cuda_map_print_f32(
+    const float *src, int n,
+    cudaStream_t stream)
+{
+  map_print_f32_kernel<<<(n+1024-1)/1024, 1024, 0, stream>>>(
+      src, 32);
 }
 
 __global__ void map_set_constant_i32_kernel(
