@@ -11,6 +11,7 @@ use ffi::*;
 
 //use array_new::{ArrayZeroExt};
 use cuda::runtime::{CudaDevice};
+use float::stub::{f16_stub};
 
 use libc::{c_int};
 use std::cmp::{min};
@@ -28,8 +29,37 @@ impl<'ctx> DownsampleOp<f32> for DeviceBufferRef<'ctx, f32> {
   }
 }
 
+impl<'ctx> DownsampleOp<f16_stub> for DeviceBufferRef<'ctx, f32> {
+  fn raw_downsample(&self, dst: &RawDeviceBuffer<f16_stub>) {
+    assert_eq!(self.len(), dst.len());
+    unsafe { array_cuda_map_cast_f32_to_f16(
+        self.as_ptr(), self.len() as c_int,
+        dst.as_mut_ptr(),
+        self.ctx.stream.ptr,
+    ) };
+  }
+}
+
 pub trait UpsampleOp<U> where U: Copy {
   fn raw_upsample(&mut self, src: &RawDeviceBuffer<U>);
+}
+
+impl<'ctx> UpsampleOp<f32> for DeviceBufferRefMut<'ctx, f32> {
+  fn raw_upsample(&mut self, src: &RawDeviceBuffer<f32>) {
+    assert_eq!(self.len(), src.len());
+    self.raw_recv(src);
+  }
+}
+
+impl<'ctx> UpsampleOp<f16_stub> for DeviceBufferRefMut<'ctx, f32> {
+  fn raw_upsample(&mut self, src: &RawDeviceBuffer<f16_stub>) {
+    assert_eq!(self.len(), src.len());
+    unsafe { array_cuda_map_cast_f16_to_f32(
+        src.as_ptr(), src.len() as c_int,
+        self.as_mut_ptr(),
+        self.ctx.stream.ptr,
+    ) };
+  }
 }
 
 pub trait ReduceOp {

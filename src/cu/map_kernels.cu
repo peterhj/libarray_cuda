@@ -1,4 +1,5 @@
 #include <cuda_runtime_api.h>
+#include <cuda_fp16.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -220,6 +221,48 @@ extern "C" void array_cuda_map_cast_u8_to_f32_vec_norm(
       (const uint32_t *)src, vn, dst, n);
 }
 
+__global__ void map_cast_f16_to_f32_kernel(
+    const half *src, int n,
+    float *dst)
+{
+  int i = threadIdx.x + blockIdx.x * blockDim.x;
+  if (i < n) {
+    half x = src[i];
+    float y = __half2float(x);
+    dst[i] = y;
+  }
+}
+
+extern "C" void array_cuda_map_cast_f16_to_f32(
+    const half *src, int n,
+    float *dst,
+    cudaStream_t stream)
+{
+  map_cast_f16_to_f32_kernel<<<(n+1024-1)/1024, 1024, 0, stream>>>(
+      src, n, dst);
+}
+
+__global__ void map_cast_f32_to_f16_kernel(
+    const float *src, int n,
+    half *dst)
+{
+  int i = threadIdx.x + blockIdx.x * blockDim.x;
+  if (i < n) {
+    float x = src[i];
+    half y = __float2half(x);
+    dst[i] = y;
+  }
+}
+
+extern "C" void array_cuda_map_cast_f32_to_f16(
+    const float *src, int n,
+    half *dst,
+    cudaStream_t stream)
+{
+  map_cast_f32_to_f16_kernel<<<(n+1024-1)/1024, 1024, 0, stream>>>(
+      src, n, dst);
+}
+
 __global__ void map_add_i32_kernel(
     const int32_t *src, int n,
     int32_t *dst)
@@ -256,4 +299,42 @@ extern "C" void array_cuda_map_add_f32(
 {
   map_add_f32_kernel<<<(n+1024-1)/1024, 1024, 0, stream>>>(
       src, n, dst);
+}
+
+__global__ void map_add_f16_as_f32(
+    const half *src, int n, int n2,
+    half *dst)
+{
+  int i2 = threadIdx.x + blockIdx.x * blockDim.x;
+  if (i2 < n2) {
+    int i = 2 * i2;
+    if (i + 1 < n) {
+      half2 x16 = ((const half2 *)src)[i2];
+      half2 y16 = ((half2 *)dst)[i2];
+      float2 x32 = __half22float2(x16);
+      float2 y32 = __half22float2(y16);
+      y32.x += x32.x;
+      y32.y += x32.y;
+      half2 z16 = __float22half2_rn(y32);
+      ((half2 *)dst)[i2] = z16;
+    } else {
+      half x16 = src[i];
+      half y16 = dst[i];
+      float x32 = __half2float(x16);
+      float y32 = __half2float(y16);
+      y32 += x32;
+      half z16 = __float2half(y32);
+      dst[i] = z16;
+    }
+  }
+}
+
+extern "C" void array_cuda_map_add_f16_as_f32(
+    const half *src, int n,
+    half *dst,
+    cudaStream_t stream)
+{
+  int n2 = (n + 1) / 2;
+  map_add_f16_as_f32<<<(n2+1024-1)/1024, 1024, 0, stream>>>(
+      src, n, n2, dst);
 }

@@ -16,6 +16,7 @@ path = "tools/test.rs"
 path = "../gcc-rs"
 
 [dependencies]
+float = "*"
 libc = "*"
 rand = "*"
 scoped_threadpool = "=0.1.6"
@@ -24,9 +25,6 @@ vec_map = "*"
 
 [dependencies.array_new]
 path = "../libarray_new"
-
-#[dependencies.async_cuda]
-#path = "../libasync_cuda"
 
 [dependencies.cuda]
 path = "../libcuda"

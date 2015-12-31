@@ -11,6 +11,7 @@ extern crate cuda_blas;
 extern crate cuda_dnn;
 extern crate cuda_rand;
 extern crate cuda_sparse;
+extern crate float;
 
 extern crate libc;
 extern crate rand;
