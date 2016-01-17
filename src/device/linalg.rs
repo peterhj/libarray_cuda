@@ -1,6 +1,6 @@
 use device::array::{DeviceArray2dView, DeviceArray2dViewMut};
 use device::context::{DeviceCtxRef};
-use device::memory::{RawDeviceBuffer};
+use device::memory::{RawDeviceBufferRef};
 
 use array_new::{Shape, ArrayView, ArrayViewMut};
 use cuda_blas::{
@@ -63,11 +63,11 @@ pub trait AsyncBlasVectorExt<'ctx> {
   fn async_vector_add(&self, alpha: f32, x: &Self::Vector, ctx: &'ctx Self::Ctx);
 }
 
-impl<'ctx> AsyncBlasVectorExt<'ctx> for RawDeviceBuffer<f32> {
+impl<'ctx> AsyncBlasVectorExt<'ctx> for RawDeviceBufferRef<'ctx, f32> {
   type Ctx = DeviceCtxRef<'ctx>;
-  type Vector = RawDeviceBuffer<f32>;
+  type Vector = RawDeviceBufferRef<'ctx, f32>;
 
-  fn async_vector_add(&self, alpha: f32, x: &RawDeviceBuffer<f32>, ctx: &'ctx DeviceCtxRef<'ctx>) {
+  fn async_vector_add(&self, alpha: f32, x: &RawDeviceBufferRef<'ctx, f32>, ctx: &'ctx DeviceCtxRef<'ctx>) {
     assert_eq!(self.len(), x.len());
     ctx.get_blas().set_pointer_mode(CublasPointerMode::Host);
     unsafe { cublas_saxpy(

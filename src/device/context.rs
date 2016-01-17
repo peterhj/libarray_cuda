@@ -64,6 +64,50 @@ impl DeviceCtxEvent {
   }
 }
 
+/*pub struct DeviceCtxSharedEvent {
+  dev_idx:    usize,
+  dev_sync:   CudaEvent,
+  state:      AtomicUsize,
+}
+
+impl DeviceCtxSharedEvent {
+  pub fn new(ctx: &DeviceCtxRef) -> DeviceCtxSharedEvent {
+    DeviceCtxSharedEvent{
+      dev_idx:  ctx.device(),
+      dev_sync: CudaEvent::create_fastest().unwrap(),
+      state:    AtomicUsize::new(0),
+    }
+  }
+
+  pub fn produce(&mut self, ctx: &DeviceCtxRef) {
+    assert_eq!(self.dev_idx, ctx.device());
+    loop {
+      match self.state.load(Ordering::Acquire) {
+        0 => {
+          self.dev_sync.record(&ctx.stream).unwrap();
+          self.state.store(1, Ordering::Release);
+          break;
+        }
+        1 => {}
+        _ => { unreachable!(); }
+      }
+    }
+  }
+
+  pub fn consume(&mut self, ctx: &DeviceCtxRef) {
+    loop {
+      match self.state.load(Ordering::Acquire) {
+        0 => {}
+        1 => {
+          ctx.stream.wait_event(&self.dev_sync).unwrap();
+          self.state.store(0, Ordering::Release);
+        }
+        _ => { unreachable!(); }
+      }
+    }
+  }
+}*/
+
 pub struct DeviceCtxEventProducer {
   dev_idx:      usize,
   dev_event:    OwnedCudaEvent,
@@ -112,19 +156,6 @@ impl DeviceCtxEventProducer {
     while self.try_produce(ctx).is_err() {
     }
   }
-
-  /*pub fn ready(&self) {
-    loop {
-      let state = self.state.load(Ordering::Acquire);
-      match state {
-        0 => {
-          break;
-        }
-        1 => {}
-        _ => unreachable!(),
-      }
-    }
-  }*/
 }
 
 pub struct DeviceCtxEventConsumer {
@@ -273,7 +304,7 @@ pub type DeviceContext = LazyDeviceContext;
 
 pub struct LazyDeviceContext {
   dev_idx:      usize,
-  dev_sync:     CudaEvent,
+  //dev_sync:     CudaEvent,
   pub stream:   CudaStream,
 
   blas:         RefCell<Option<CublasHandle>>,
@@ -318,8 +349,8 @@ impl LazyDeviceContext {
     let stream = CudaStream::create()
       .ok().expect("failed to create cuda stream!");
 
-    let dev_sync = CudaEvent::create_fastest()
-      .ok().expect("failed to create blocking sync event!");
+    /*let dev_sync = CudaEvent::create_fastest()
+      .ok().expect("failed to create blocking sync event!");*/
 
     /*let rng = CurandGenerator::create()
       .ok().expect("failed to create curand generator!");
@@ -337,7 +368,7 @@ impl LazyDeviceContext {
 
     LazyDeviceContext{
       dev_idx:  dev_idx,
-      dev_sync: dev_sync,
+      //dev_sync: dev_sync,
       stream:   stream,
       blas:     RefCell::new(None),
       dnn:      RefCell::new(None),

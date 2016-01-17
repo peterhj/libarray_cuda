@@ -5,7 +5,7 @@ use device::context::{
 use device::ext::*;
 use device::linalg::*;
 use device::memory::{
-  DeviceBufferRef, DeviceBufferRefMut, RawDeviceBuffer,
+  DeviceBufferRef, DeviceBufferRefMut, RawDeviceBufferRef,
 };
 use ffi::*;
 
@@ -20,17 +20,17 @@ use std::sync::{Arc};
 pub mod allreduce;
 
 pub trait DownsampleOp<U> where U: Copy {
-  fn raw_downsample(&self, dst: &RawDeviceBuffer<U>);
+  fn raw_downsample(&self, dst: &RawDeviceBufferRef<U>);
 }
 
 impl<'ctx> DownsampleOp<f32> for DeviceBufferRef<'ctx, f32> {
-  fn raw_downsample(&self, dst: &RawDeviceBuffer<f32>) {
-    self.raw_send(dst, &self.ctx);
+  fn raw_downsample(&self, dst: &RawDeviceBufferRef<f32>) {
+    self.raw_send(dst);
   }
 }
 
 impl<'ctx> DownsampleOp<f16_stub> for DeviceBufferRef<'ctx, f32> {
-  fn raw_downsample(&self, dst: &RawDeviceBuffer<f16_stub>) {
+  fn raw_downsample(&self, dst: &RawDeviceBufferRef<f16_stub>) {
     assert_eq!(self.len(), dst.len());
     unsafe { array_cuda_map_cast_f32_to_f16(
         self.as_ptr(), self.len() as c_int,
@@ -41,18 +41,18 @@ impl<'ctx> DownsampleOp<f16_stub> for DeviceBufferRef<'ctx, f32> {
 }
 
 pub trait UpsampleOp<U> where U: Copy {
-  fn raw_upsample(&mut self, src: &RawDeviceBuffer<U>);
+  fn raw_upsample(&mut self, src: &RawDeviceBufferRef<U>);
 }
 
 impl<'ctx> UpsampleOp<f32> for DeviceBufferRefMut<'ctx, f32> {
-  fn raw_upsample(&mut self, src: &RawDeviceBuffer<f32>) {
+  fn raw_upsample(&mut self, src: &RawDeviceBufferRef<f32>) {
     assert_eq!(self.len(), src.len());
     self.raw_recv(src);
   }
 }
 
 impl<'ctx> UpsampleOp<f16_stub> for DeviceBufferRefMut<'ctx, f32> {
-  fn raw_upsample(&mut self, src: &RawDeviceBuffer<f16_stub>) {
+  fn raw_upsample(&mut self, src: &RawDeviceBufferRef<f16_stub>) {
     assert_eq!(self.len(), src.len());
     unsafe { array_cuda_map_cast_f16_to_f32(
         src.as_ptr(), src.len() as c_int,
@@ -63,11 +63,11 @@ impl<'ctx> UpsampleOp<f16_stub> for DeviceBufferRefMut<'ctx, f32> {
 }
 
 pub trait ReduceOp {
-  fn reduce<'ctx>(src: &RawDeviceBuffer<Self>, dst: &RawDeviceBuffer<Self>, ctx: &DeviceCtxRef<'ctx>) where Self: Copy;
+  fn reduce<'ctx>(src: &RawDeviceBufferRef<Self>, dst: &RawDeviceBufferRef<Self>, ctx: &DeviceCtxRef<'ctx>) where Self: Copy;
 }
 
 impl ReduceOp for i32 {
-  fn reduce<'ctx>(src: &RawDeviceBuffer<i32>, dst: &RawDeviceBuffer<i32>, ctx: &DeviceCtxRef<'ctx>) {
+  fn reduce<'ctx>(src: &RawDeviceBufferRef<i32>, dst: &RawDeviceBufferRef<i32>, ctx: &DeviceCtxRef<'ctx>) {
     unsafe { array_cuda_map_add_i32(
         src.as_ptr(), src.len() as c_int,
         dst.as_mut_ptr(),
@@ -77,7 +77,7 @@ impl ReduceOp for i32 {
 }
 
 impl ReduceOp for f32 {
-  fn reduce<'ctx>(src: &RawDeviceBuffer<f32>, dst: &RawDeviceBuffer<f32>, ctx: &DeviceCtxRef<'ctx>) {
+  fn reduce<'ctx>(src: &RawDeviceBufferRef<f32>, dst: &RawDeviceBufferRef<f32>, ctx: &DeviceCtxRef<'ctx>) {
     /*unsafe { array_cuda_map_add_f32(
         src.as_ptr(), src.len() as c_int,
         dst.as_mut_ptr(),
@@ -89,14 +89,14 @@ impl ReduceOp for f32 {
 
 pub fn for_all_devices<F, V>(limit: usize, mut f: F) -> V where F: FnMut(&[DeviceContext]) -> V {
   let mut contexts = vec![];
-  for dev_idx in (0 .. min(limit, CudaDevice::count().unwrap())) {
+  for dev_idx in 0 .. min(limit, CudaDevice::count().unwrap()) {
     let context = DeviceContext::new(dev_idx);
     contexts.push(context);
   }
   f(&contexts)
 }
 
-pub struct SendChanSource<T> where T: Copy {
+/*pub struct SendChanSource<T> where T: Copy {
   send_ev:  DeviceCtxEventProducer,
   recv_ev:  DeviceCtxEventConsumer,
   buf:      Arc<RawDeviceBuffer<T>>,
@@ -111,7 +111,7 @@ impl<T> SendChanSource<T> where T: Copy {
     } else {
       self.recv_ev.consume(&src.ctx);
     }
-    src.raw_send(&self.buf, &src.ctx);
+    src.raw_send(&self.buf.as_ref());
     self.send_ev.produce(&src.ctx);
   }
 }
@@ -126,7 +126,7 @@ impl<T> SendChanSink<T> where T: Copy {
   pub fn recv(&self, dst: &mut DeviceBufferRefMut<T>) {
     assert_eq!(self.recv_ev.device(), dst.ctx.device());
     self.send_ev.consume(&dst.ctx);
-    dst.raw_recv(&self.buf);
+    dst.raw_recv(&self.buf.as_ref());
     self.recv_ev.produce(&dst.ctx);
   }
 }
@@ -151,4 +151,4 @@ pub fn send_channel<T: Copy>(buf_len: usize, send_ctx: &DeviceContext, recv_ctx:
     recv_ev:    recv_tx,
     buf:        buf,
   })
-}
+}*/

@@ -216,7 +216,7 @@ impl<'ctx, T> DeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
     }
   }
 
-  pub fn raw_send<'a>(&self, other: &RawDeviceBuffer<T>, ctx: &DeviceCtxRef<'a>) {
+  pub fn raw_send<'a>(&self, other: &RawDeviceBufferRef<'a, T>) {
     assert_eq!(self.len, other.len);
     assert_eq!(self.size, other.size);
     if self.dev_idx == other.dev_idx {
@@ -225,7 +225,7 @@ impl<'ctx, T> DeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
           self.as_ptr() as *const u8,
           self.size,
           CudaMemcpyKind::DeviceToDevice,
-          &ctx.stream,
+          &self.ctx.stream,
       ) }.unwrap();
     } else {
       // TODO(20151211)
@@ -290,7 +290,7 @@ impl<'ctx, T> DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
     }
   }
 
-  pub fn raw_recv(&mut self, src: &RawDeviceBuffer<T>) {
+  pub fn raw_recv<'a>(&mut self, src: &RawDeviceBufferRef<'a, T>) {
     assert_eq!(self.len, src.len);
     assert_eq!(self.size, src.size);
     if self.dev_idx == src.dev_idx {
@@ -349,9 +349,9 @@ impl<'ctx, T> DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
 
 pub struct RawDeviceBuffer<T> where T: Copy {
   dev_idx:  usize,
-  dptr: *mut T,
-  len:  usize,
-  size: usize,
+  dptr:     *mut T,
+  len:      usize,
+  size:     usize,
 }
 
 unsafe impl<T> Send for RawDeviceBuffer<T> where T: Copy {}
@@ -381,9 +381,9 @@ impl<T> RawDeviceBuffer<T> where T: Copy {
     }
     RawDeviceBuffer{
       dev_idx:  ctx.device(),
-      dptr: dptr as *mut T,
-      len:  len,
-      size: size,
+      dptr:     dptr as *mut T,
+      len:      len,
+      size:     size,
     }
   }
 
@@ -422,12 +422,22 @@ impl<T> RawDeviceBuffer<T> where T: Copy {
     }
   }
 
+  pub fn as_ref<'a>(&'a self) -> RawDeviceBufferRef<'a, T> {
+    RawDeviceBufferRef{
+      dev_idx:  self.dev_idx,
+      dptr:     self.dptr,
+      len:      self.len,
+      size:     self.size,
+      _marker:  PhantomData,
+    }
+  }
+
   pub fn as_ref_range<'a>(&'a self, from: usize, to: usize) -> RawDeviceBufferRef<'a, T> {
     RawDeviceBufferRef{
       dev_idx:  self.dev_idx,
-      dptr: unsafe { self.dptr.offset(from as isize) },
-      len:  to - from,
-      size: (to - from) * size_of::<T>(),
+      dptr:     unsafe { self.dptr.offset(from as isize) },
+      len:      to - from,
+      size:     (to - from) * size_of::<T>(),
       _marker:  PhantomData,
     }
   }
@@ -435,9 +445,9 @@ impl<T> RawDeviceBuffer<T> where T: Copy {
 
 pub struct RawDeviceBufferRef<'a, T> where T: Copy {
   dev_idx:  usize,
-  dptr: *mut T,
-  len:  usize,
-  size: usize,
+  dptr:     *mut T,
+  len:      usize,
+  size:     usize,
   _marker:  PhantomData<&'a ()>,
 }
 
