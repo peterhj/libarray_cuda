@@ -1,7 +1,12 @@
 #include <cuda_runtime_api.h>
-#include <cuda_fp16.h>
+// FIXME(20160123): commentng out for cuda 7.0.
+//#include <cuda_fp16.h>
+
+#include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
+
+typedef uint16_t half;
 
 #define BANK_OFFSET(idx) ({ __typeof__ (idx) _idx = idx; ((_idx) + ((_idx) / 32)); })
 
@@ -228,7 +233,8 @@ __global__ void map_cast_f16_to_f32_kernel(
   int i = threadIdx.x + blockIdx.x * blockDim.x;
   if (i < n) {
     half x = src[i];
-    float y = __half2float(x);
+    //float y = __half2float(x);
+    float y = 0;
     dst[i] = y;
   }
 }
@@ -249,7 +255,8 @@ __global__ void map_cast_f32_to_f16_kernel(
   int i = threadIdx.x + blockIdx.x * blockDim.x;
   if (i < n) {
     float x = src[i];
-    half y = __float2half(x);
+    //half y = __float2half(x);
+    half y = 0;
     dst[i] = y;
   }
 }
@@ -301,7 +308,7 @@ extern "C" void array_cuda_map_add_f32(
       src, n, dst);
 }
 
-__global__ void map_add_f16_as_f32(
+/*__global__ void map_add_f16_as_f32(
     const half *src, int n, int n2,
     half *dst)
 {
@@ -327,14 +334,15 @@ __global__ void map_add_f16_as_f32(
       dst[i] = z16;
     }
   }
-}
+}*/
 
 extern "C" void array_cuda_map_add_f16_as_f32(
     const half *src, int n,
     half *dst,
     cudaStream_t stream)
 {
-  int n2 = (n + 1) / 2;
+  assert(0);
+  /*int n2 = (n + 1) / 2;
   map_add_f16_as_f32<<<(n2+1024-1)/1024, 1024, 0, stream>>>(
-      src, n, n2, dst);
+      src, n, n2, dst);*/
 }
