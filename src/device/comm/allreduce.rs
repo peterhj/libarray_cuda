@@ -106,14 +106,16 @@ impl<T, U> DeviceAllReduceWorker<T, U> where T: ReduceOp + Copy, U: ReduceOp + C
   }
 
   pub fn load(&mut self, offset: usize, input: &mut DeviceBufferRef<T>) -> usize {
-    let depth = self.depth;
     let &mut DeviceAllReduceWorker{
       ref mut src_bufs, .. } = self;
 
     assert!(src_bufs[0].is_some());
 
     let end_offset = offset + input.len();
-    let src_buf = src_bufs[0].as_mut().unwrap();
+    let src_buf = src_bufs[0].as_ref().unwrap();
+    /*println!("DEBUG: allreduce: load: offsets: {} {} input len: {} src len: {}",
+        offset, end_offset,
+        input.len(), src_buf.len());*/
     input.raw_send(&src_buf.as_ref_range(offset, end_offset));
 
     end_offset
@@ -123,7 +125,7 @@ impl<T, U> DeviceAllReduceWorker<T, U> where T: ReduceOp + Copy, U: ReduceOp + C
     let &mut DeviceAllReduceWorker{
       ref mut src_bufs, .. } = self;
 
-    let amount = output.len();
+    assert!(src_bufs[0].is_some());
 
     let end_offset = offset + output.len();
     let src_buf = src_bufs[0].as_ref().unwrap();
@@ -178,9 +180,8 @@ impl<T, U> DeviceAllReduceWorker<T, U> where T: ReduceOp + Copy, U: ReduceOp + C
         src_buf.raw_send(rd_buf, ctx);
 
         //cv_src.notify(ctx);
-
-        ctx.sync();
       }
+      ctx.sync();
       self.barrier.wait();
 
       if (tid % r) == 0 {
@@ -195,9 +196,8 @@ impl<T, U> DeviceAllReduceWorker<T, U> where T: ReduceOp + Copy, U: ReduceOp + C
         ReduceOp::reduce(&(**rd_buf).as_ref(), &(**src_buf).as_ref(), ctx);
 
         //cv_src.notify(ctx);
-
-        ctx.sync();
       }
+      ctx.sync();
       self.barrier.wait();
     }
 
@@ -209,9 +209,8 @@ impl<T, U> DeviceAllReduceWorker<T, U> where T: ReduceOp + Copy, U: ReduceOp + C
         let src_buf = src_bufs[d].as_ref().unwrap();
         let bc_buf = bc_bufs[d].as_ref().unwrap();
         src_buf.raw_send(bc_buf, ctx);
-
-        ctx.sync();
       }
+      ctx.sync();
       self.barrier.wait();
     }
 

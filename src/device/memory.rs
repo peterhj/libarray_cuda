@@ -43,7 +43,7 @@ pub struct DeviceBuffer<T> where T: Copy {
   dev_idx:  usize,
   dptr: *mut T,
   len:  usize,
-  size: usize,
+  //size: usize,
 }
 
 impl<T> Drop for DeviceBuffer<T> where T: Copy {
@@ -60,9 +60,9 @@ impl<T> Drop for DeviceBuffer<T> where T: Copy {
 impl<T> DeviceBuffer<T> where T: Copy {
   pub unsafe fn new(len: usize, ctx: &DeviceCtxRef) -> DeviceBuffer<T> {
     let min_size = len * size_of::<T>();
-    let size = (min_size + WARP_SIZE - 1) / WARP_SIZE * WARP_SIZE;
+    let alloc_size = (min_size + WARP_SIZE - 1) / WARP_SIZE * WARP_SIZE;
     let mut dptr: *mut c_void = null_mut();
-    match unsafe { cudaMalloc(&mut dptr as *mut *mut c_void, size) } {
+    match unsafe { cudaMalloc(&mut dptr as *mut *mut c_void, alloc_size) } {
       cudaError::Success => {}
       e => {
         panic!("failed to allocate DeviceBuffer: {:?}", e);
@@ -73,7 +73,7 @@ impl<T> DeviceBuffer<T> where T: Copy {
       dev_idx:  ctx.device(),
       dptr: dptr as *mut T,
       len:  len,
-      size: size,
+      //size: size,
     }
   }
 
@@ -93,13 +93,14 @@ impl<T> DeviceBuffer<T> where T: Copy {
       dev_idx:  self.dev_idx,
       dptr: self.dptr as *const T,
       len:  self.len,
-      size: self.size,
+      //size: self.size,
     }
   }
 
   pub fn as_ref_range<'ctx>(&mut self, from: usize, to: usize, ctx: &'ctx DeviceCtxRef) -> DeviceBufferRef<'ctx, T> {
     assert!(from <= self.len);
     assert!(to <= self.len);
+    assert!(from <= to);
     ctx.stream.wait_event(&self.dev_sync).unwrap();
     DeviceBufferRef{
       ctx:  ctx,
@@ -107,7 +108,7 @@ impl<T> DeviceBuffer<T> where T: Copy {
       dev_idx:  self.dev_idx,
       dptr: unsafe { (self.dptr as *const T).offset(from as isize) },
       len:  to - from,
-      size: (to - from) * size_of::<T>(),
+      //size: (to - from) * size_of::<T>(),
     }
   }
 
@@ -119,13 +120,14 @@ impl<T> DeviceBuffer<T> where T: Copy {
       dev_idx:  self.dev_idx,
       dptr: self.dptr,
       len:  self.len,
-      size: self.size,
+      //size: self.size,
     }
   }
 
   pub fn as_ref_mut_range<'ctx>(&mut self, from: usize, to: usize, ctx: &'ctx DeviceCtxRef) -> DeviceBufferRefMut<'ctx, T> {
     assert!(from <= self.len);
     assert!(to <= self.len);
+    assert!(from <= to);
     ctx.stream.wait_event(&self.dev_sync).unwrap();
     DeviceBufferRefMut{
       ctx:  ctx,
@@ -133,7 +135,7 @@ impl<T> DeviceBuffer<T> where T: Copy {
       dev_idx:  self.dev_idx,
       dptr: unsafe { self.dptr.offset(from as isize) },
       len:  to - from,
-      size: (to - from) * size_of::<T>(),
+      //size: (to - from) * size_of::<T>(),
     }
   }
 }
@@ -181,7 +183,7 @@ pub struct DeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
   dev_idx:  usize,
   dptr: *const T,
   len:  usize,
-  size: usize,
+  //size: usize,
 }
 
 impl<'ctx, T> Drop for DeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
@@ -201,12 +203,12 @@ impl<'ctx, T> DeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
 
   pub fn send(&self, other: &mut DeviceBufferRefMut<'ctx, T>) {
     assert_eq!(self.len, other.len);
-    assert_eq!(self.size, other.size);
+    //assert_eq!(self.size, other.size);
     if self.dev_idx == other.dev_idx {
       unsafe { cuda_memcpy_async(
           other.as_mut_ptr() as *mut u8,
           self.as_ptr() as *const u8,
-          self.size,
+          self.len * size_of::<T>(),
           CudaMemcpyKind::DeviceToDevice,
           &self.ctx.stream,
       ) }.unwrap();
@@ -218,12 +220,12 @@ impl<'ctx, T> DeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
 
   pub fn raw_send<'a>(&self, other: &RawDeviceBufferRef<'a, T>) {
     assert_eq!(self.len, other.len);
-    assert_eq!(self.size, other.size);
+    //assert_eq!(self.size, other.size);
     if self.dev_idx == other.dev_idx {
       unsafe { cuda_memcpy_async(
           other.as_mut_ptr() as *mut u8,
           self.as_ptr() as *const u8,
-          self.size,
+          self.len * size_of::<T>(),
           CudaMemcpyKind::DeviceToDevice,
           &self.ctx.stream,
       ) }.unwrap();
@@ -252,7 +254,7 @@ pub struct DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
   dev_idx:  usize,
   dptr: *mut T,
   len:  usize,
-  size: usize,
+  //size: usize,
 }
 
 impl<'ctx, T> Drop for DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
@@ -280,7 +282,7 @@ impl<'ctx, T> DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
       unsafe { cuda_memcpy_async(
           self.as_mut_ptr() as *mut u8,
           other.as_ptr() as *const u8,
-          self.size,
+          self.len * size_of::<T>(),
           CudaMemcpyKind::DeviceToDevice,
           &self.ctx.stream,
       ) }.unwrap();
@@ -292,12 +294,12 @@ impl<'ctx, T> DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
 
   pub fn raw_recv<'a>(&mut self, src: &RawDeviceBufferRef<'a, T>) {
     assert_eq!(self.len, src.len);
-    assert_eq!(self.size, src.size);
+    //assert_eq!(self.size, src.size);
     if self.dev_idx == src.dev_idx {
       unsafe { cuda_memcpy_async(
           self.as_mut_ptr() as *mut u8,
           src.as_ptr() as *const u8,
-          self.size,
+          self.len * size_of::<T>(),
           CudaMemcpyKind::DeviceToDevice,
           &self.ctx.stream,
       ) }.unwrap();
@@ -305,7 +307,8 @@ impl<'ctx, T> DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
       unsafe { cuda_memcpy_peer_async(
           self.as_mut_ptr() as *mut u8, self.dev_idx,
           src.as_ptr() as *const u8, src.dev_idx,
-          self.size,
+          //self.size,
+          self.len * size_of::<T>(),
           &self.ctx.stream,
       ) };
     }
@@ -351,7 +354,7 @@ pub struct RawDeviceBuffer<T> where T: Copy {
   dev_idx:  usize,
   dptr:     *mut T,
   len:      usize,
-  size:     usize,
+  //size:     usize,
 }
 
 unsafe impl<T> Send for RawDeviceBuffer<T> where T: Copy {}
@@ -383,7 +386,7 @@ impl<T> RawDeviceBuffer<T> where T: Copy {
       dev_idx:  ctx.device(),
       dptr:     dptr as *mut T,
       len:      len,
-      size:     size,
+      //size:     size,
     }
   }
 
@@ -401,7 +404,7 @@ impl<T> RawDeviceBuffer<T> where T: Copy {
 
   pub fn raw_send<'ctx>(&self, other: &RawDeviceBuffer<T>, ctx: &DeviceCtxRef<'ctx>) {
     assert_eq!(self.len, other.len);
-    assert_eq!(self.size, other.size);
+    //assert_eq!(self.size, other.size);
     if self.dev_idx == other.dev_idx {
       /*unsafe { cuda_memcpy_async(
           other.as_mut_ptr() as *mut u8,
@@ -416,7 +419,7 @@ impl<T> RawDeviceBuffer<T> where T: Copy {
       unsafe { cuda_memcpy_peer_async(
           other.as_mut_ptr() as *mut u8, other.dev_idx,
           self.as_ptr() as *const u8, self.dev_idx,
-          self.size,
+          self.len * size_of::<T>(),
           &ctx.stream,
       ) };
     }
@@ -427,17 +430,20 @@ impl<T> RawDeviceBuffer<T> where T: Copy {
       dev_idx:  self.dev_idx,
       dptr:     self.dptr,
       len:      self.len,
-      size:     self.size,
+      //size:     self.size,
       _marker:  PhantomData,
     }
   }
 
   pub fn as_ref_range<'a>(&'a self, from: usize, to: usize) -> RawDeviceBufferRef<'a, T> {
+    assert!(from <= self.len);
+    assert!(to <= self.len);
+    assert!(from <= to);
     RawDeviceBufferRef{
       dev_idx:  self.dev_idx,
       dptr:     unsafe { self.dptr.offset(from as isize) },
       len:      to - from,
-      size:     (to - from) * size_of::<T>(),
+      //size:     (to - from) * size_of::<T>(),
       _marker:  PhantomData,
     }
   }
@@ -447,7 +453,7 @@ pub struct RawDeviceBufferRef<'a, T> where T: Copy {
   dev_idx:  usize,
   dptr:     *mut T,
   len:      usize,
-  size:     usize,
+  //size:     usize,
   _marker:  PhantomData<&'a ()>,
 }
 

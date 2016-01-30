@@ -78,12 +78,12 @@ impl ReduceOp for i32 {
 
 impl ReduceOp for f32 {
   fn reduce<'ctx>(src: &RawDeviceBufferRef<f32>, dst: &RawDeviceBufferRef<f32>, ctx: &DeviceCtxRef<'ctx>) {
-    /*unsafe { array_cuda_map_add_f32(
+    //dst.async_vector_add(1.0, src, ctx);
+    unsafe { array_cuda_map_add_f32(
         src.as_ptr(), src.len() as c_int,
         dst.as_mut_ptr(),
         ctx.stream.ptr,
-    ) };*/
-    dst.async_vector_add(1.0, src, ctx);
+    ) };
   }
 }
 
