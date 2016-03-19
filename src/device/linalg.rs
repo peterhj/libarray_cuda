@@ -187,6 +187,7 @@ impl<'a> BlasMatrixExt for DeviceArray2dViewMut<'a, f32> {
     let ldb = b.stride();
     let ldc = self.stride();
 
+    // FIXME(20160201): check same devices.
     self.data.ctx.get_blas().set_pointer_mode(CublasPointerMode::Host);
     unsafe { cublas_sgemm(
         &*self.data.ctx.get_blas(),
@@ -198,6 +199,5 @@ impl<'a> BlasMatrixExt for DeviceArray2dViewMut<'a, f32> {
         beta,
         self.as_mut_ptr(), ldc,
     ) }.unwrap();
-    unimplemented!();
   }
 }

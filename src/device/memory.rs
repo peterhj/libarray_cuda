@@ -1,7 +1,9 @@
+use device::array::{DeviceArray2dView, DeviceArray2dViewMut};
 use device::context::{DeviceCtxRef};
 use device::ext::{DeviceBytesExt, DeviceNumExt};
 use host_memory::{HostBufferRef};
 
+use array_new::{Shape};
 use cuda::ffi::runtime::{
   cudaError,
   cudaFree,
@@ -50,6 +52,10 @@ impl<T> Drop for DeviceBuffer<T> where T: Copy {
   fn drop(&mut self) {
     match unsafe { cudaFree(self.dptr as *mut c_void) } {
       cudaError::Success => {}
+      cudaError::CudartUnloading => {
+        // XXX(20160308): Sometimes drop() is called while the global runtime
+        // is shutting down; suppress these errors.
+      }
       e => {
         panic!("failed to free device memory: {:?}", e);
       }
@@ -201,6 +207,16 @@ impl<'ctx, T> DeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
     self.dptr as *const T
   }
 
+  pub fn into_2d_view(self, bound: (usize, usize)) -> DeviceArray2dView<'ctx, T> {
+    // FIXME(20160201): should take a range first for exact size.
+    assert!(bound.len() <= self.len);
+    DeviceArray2dView{
+      data:     self,
+      bound:    bound,
+      stride:   bound.to_least_stride(),
+    }
+  }
+
   pub fn send(&self, other: &mut DeviceBufferRefMut<'ctx, T>) {
     assert_eq!(self.len, other.len);
     //assert_eq!(self.size, other.size);
@@ -274,6 +290,16 @@ impl<'ctx, T> DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
 
   pub unsafe fn as_mut_ptr(&mut self) -> *mut T {
     self.dptr
+  }
+
+  pub fn into_2d_view_mut(self, bound: (usize, usize)) -> DeviceArray2dViewMut<'ctx, T> {
+    // FIXME(20160201): should take a range first for exact size.
+    assert!(bound.len() <= self.len);
+    DeviceArray2dViewMut{
+      data:     self,
+      bound:    bound,
+      stride:   bound.to_least_stride(),
+    }
   }
 
   pub fn recv(&mut self, other: &DeviceBufferRef<'ctx, T>) {
@@ -364,6 +390,10 @@ impl<T> Drop for RawDeviceBuffer<T> where T: Copy {
   fn drop(&mut self) {
     match unsafe { cudaFree(self.dptr as *mut c_void) } {
       cudaError::Success => {}
+      cudaError::CudartUnloading => {
+        // XXX(20160308): Sometimes drop() is called while the global runtime
+        // is shutting down; suppress these errors.
+      }
       e => {
         panic!("failed to free device memory: {:?}", e);
       }

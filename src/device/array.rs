@@ -84,8 +84,10 @@ impl DeviceArray2d<f32> {
 
 pub struct DeviceArray2dView<'a, T> where T: 'a + Copy {
   pub data:     DeviceBufferRef<'a, T>,
-  bound:    (usize, usize),
-  stride:   usize,
+  // FIXME(20160201): bound and stride should not be public, only pub because of
+  // .into_2d_view method of DeviceBufRef.
+  pub bound:    (usize, usize),
+  pub stride:   usize,
 }
 
 impl<'a, T> ArrayView<'a, T, (usize, usize)> for DeviceArray2dView<'a, T> where T: 'a + Copy {
@@ -105,7 +107,7 @@ impl<'a, T> ArrayView<'a, T, (usize, usize)> for DeviceArray2dView<'a, T> where 
     self.data.as_ptr()
   }
 
-  fn view(&self, lo: (usize, usize), hi: (usize, usize)) -> DeviceArray2dView<'a, T> {
+  fn view(self, lo: (usize, usize), hi: (usize, usize)) -> DeviceArray2dView<'a, T> {
     // TODO(20151214)
     unimplemented!();
   }
@@ -143,8 +145,10 @@ impl<'a, T> DeviceArray2dView<'a, T> where T: 'a + Copy {
 
 pub struct DeviceArray2dViewMut<'a, T> where T: 'a + Copy {
   pub data:     DeviceBufferRefMut<'a, T>,
-  bound:    (usize, usize),
-  stride:   usize,
+  // FIXME(20160312): bound and stride should not be public, only pub because of
+  // .into_2d_view_mut method of DeviceBufRefMut.
+  pub bound:    (usize, usize),
+  pub stride:   usize,
 }
 
 impl<'a, T> ArrayViewMut<'a, T, (usize, usize)> for DeviceArray2dViewMut<'a, T> where T: 'a + Copy {
@@ -168,7 +172,7 @@ impl<'a, T> ArrayViewMut<'a, T, (usize, usize)> for DeviceArray2dViewMut<'a, T> 
     self.data.as_mut_ptr()
   }
 
-  fn view_mut(&mut self, lo: (usize, usize), hi: (usize, usize)) -> DeviceArray2dViewMut<'a, T> {
+  fn view_mut(self, lo: (usize, usize), hi: (usize, usize)) -> DeviceArray2dViewMut<'a, T> {
     // TODO(20151214)
     unimplemented!();
   }

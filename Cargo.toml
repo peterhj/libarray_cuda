@@ -34,6 +34,7 @@ path = "../libcuda_blas"
 
 [dependencies.cuda_dnn]
 path = "../libcuda_dnn"
+#features = ["v3"]
 
 [dependencies.cuda_rand]
 path = "../libcuda_rand"
