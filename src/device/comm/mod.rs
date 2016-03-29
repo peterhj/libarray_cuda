@@ -18,6 +18,7 @@ use std::cmp::{min};
 use std::sync::{Arc};
 
 pub mod allreduce;
+pub mod gossip;
 
 pub trait DownsampleOp<U> where U: Copy {
   fn raw_downsample(&self, dst: &RawDeviceBufferRef<U>);
@@ -96,6 +97,35 @@ pub fn for_all_devices<F, V>(limit: usize, mut f: F) -> V where F: FnMut(&[Devic
     contexts.push(context);
   }
   f(&contexts)
+}
+
+pub trait ReduceOperation<T> {
+  fn reduce<'ctx>(&self, src: &RawDeviceBufferRef<T>, dst: &RawDeviceBufferRef<T>, ctx: &DeviceCtxRef<'ctx>);
+}
+
+pub struct AverageReduceOperation<T> {
+  num_workers:  usize,
+  _marker:      PhantomData<T>,
+}
+
+impl<T> AverageReduceOperation<T> {
+  pub fn new(num_workers: usize) -> AverageReduceOperation<T> {
+    AverageReduceOperation{
+      num_workers:  num_workers,
+      _marker:      PhantomData,
+    }
+  }
+}
+
+impl ReduceOperation<f32> for AverageReduceOperation<f32> {
+  fn reduce<'ctx>(&self, src: &RawDeviceBufferRef<f32>, dst: &RawDeviceBufferRef<f32>, ctx: &DeviceCtxRef<'ctx>) {
+    let normalize = 1.0 / (self.num_workers as f32);
+    unsafe { array_cuda_map_add_f32(
+        normalize, src.as_ptr(), src.len() as c_int,
+        normalize, dst.as_mut_ptr(),
+        ctx.stream.ptr,
+    ) };
+  }
 }
 
 /*pub struct SendChanSource<T> where T: Copy {
