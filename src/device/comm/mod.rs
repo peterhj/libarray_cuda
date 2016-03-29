@@ -89,8 +89,10 @@ impl ReduceOp for f32 {
 
 pub fn for_all_devices<F, V>(limit: usize, mut f: F) -> V where F: FnMut(&[DeviceContext]) -> V {
   let mut contexts = vec![];
-  for dev_idx in 0 .. min(limit, CudaDevice::count().unwrap()) {
-    let context = DeviceContext::new(dev_idx);
+  // XXX(20160320): Cycle between all devices in round-robin order.
+  //for dev_idx in 0 .. min(limit, CudaDevice::count().unwrap()) {
+  for worker_idx in 0 .. limit {
+    let context = DeviceContext::new(worker_idx);
     contexts.push(context);
   }
   f(&contexts)

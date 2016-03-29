@@ -314,7 +314,9 @@ pub struct LazyDeviceContext {
 }
 
 impl LazyDeviceContext {
-  pub fn new(dev_idx: usize) -> LazyDeviceContext {
+  pub fn new(worker_idx: usize) -> LazyDeviceContext {
+    let dev_count = CudaDevice::count().unwrap();
+    let dev_idx = worker_idx % dev_count;
     DEVICE_CONTEXT_INIT.call_once(|| {
       // TODO(20151211): see notes in cuda docs:
       // <http://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__PEER.html>
