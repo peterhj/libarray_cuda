@@ -13,6 +13,6 @@ extern "C" {
   pub fn array_cuda_map_cast_f16_to_f32(src: *const f16_stub, n: c_int, dst: *mut f32, stream: cudaStream_t);
   pub fn array_cuda_map_cast_f32_to_f16(src: *const f32, n: c_int, dst: *mut f16_stub, stream: cudaStream_t);
   pub fn array_cuda_map_add_i32(src: *const i32, n: c_int, dst: *mut i32, stream: cudaStream_t);
-  pub fn array_cuda_map_add_f32(src: *const f32, n: c_int, dst: *mut f32, stream: cudaStream_t);
+  pub fn array_cuda_map_add_f32(alpha: f32, src: *const f32, n: c_int, beta: f32, dst: *mut f32, stream: cudaStream_t);
   pub fn array_cuda_map_add_f16_as_f32(src: *const f16_stub, n: c_int, dst: *mut f16_stub, stream: cudaStream_t);
 }

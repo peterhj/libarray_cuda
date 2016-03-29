@@ -283,22 +283,22 @@ extern "C" void array_cuda_map_add_i32(
 }
 
 __global__ void map_add_f32_kernel(
-    const float *src, int n,
-    float *dst)
+    const float alpha, const float *src, int n,
+    const float beta, float *dst)
 {
   int i = threadIdx.x + blockIdx.x * blockDim.x;
   if (i < n) {
-    dst[i] = dst[i] + src[i];
+    dst[i] = beta * dst[i] + alpha * src[i];
   }
 }
 
 extern "C" void array_cuda_map_add_f32(
-    const float *src, int n,
-    float *dst,
+    const float alpha, const float *src, int n,
+    const float beta, float *dst,
     cudaStream_t stream)
 {
   map_add_f32_kernel<<<(n+1024-1)/1024, 1024, 0, stream>>>(
-      src, n, dst);
+      alpha, src, n, beta, dst);
 }
 
 __global__ void map_add_f16_as_f32(
