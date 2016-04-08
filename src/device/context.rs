@@ -464,4 +464,23 @@ impl<'ctx> DeviceCtxRef<'ctx> {
     let dnn: Ref<Option<CudnnHandle>> = self.ctx.dnn.borrow();
     Ref::map(dnn, |h| h.as_ref().unwrap())
   }
+
+  pub fn get_rng(&self) -> Ref<CurandGenerator> {
+    {
+      let mut rng = self.ctx.rng.borrow_mut();
+      if rng.is_none() {
+        let new_rng = CurandGenerator::create()
+          .ok().expect("failed to create curand handle!");
+        new_rng.set_stream(&self.ctx.stream)
+          .ok().expect("failed to set stream for curand handle!");
+        new_rng.set_seed(thread_rng().next_u64())
+          .ok().expect("failed to set seed for curand handle!");
+        new_rng.set_offset(0)
+          .ok().expect("failed to set offset for curand handle!");
+        *rng = Some(new_rng);
+      }
+    }
+    let rng: Ref<Option<CurandGenerator>> = self.ctx.rng.borrow();
+    Ref::map(rng, |h| h.as_ref().unwrap())
+  }
 }

@@ -1,4 +1,7 @@
-use device::array::{DeviceArray2dView, DeviceArray2dViewMut};
+use device::array::{
+  DeviceArray2dView, DeviceArray2dViewMut,
+  DeviceArray3dView, DeviceArray3dViewMut,
+};
 use device::context::{DeviceCtxRef};
 use device::ext::{DeviceBytesExt, DeviceNumExt};
 use host_memory::{HostBufferRef};
@@ -217,6 +220,16 @@ impl<'ctx, T> DeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
     }
   }
 
+  pub fn into_3d_view(self, bound: (usize, usize, usize)) -> DeviceArray3dView<'ctx, T> {
+    // FIXME(20160201): should take a range first for exact size.
+    assert!(bound.len() <= self.len);
+    DeviceArray3dView{
+      data:     self,
+      bound:    bound,
+      stride:   bound.to_least_stride(),
+    }
+  }
+
   pub fn send(&self, other: &mut DeviceBufferRefMut<'ctx, T>) {
     assert_eq!(self.len, other.len);
     //assert_eq!(self.size, other.size);
@@ -296,6 +309,16 @@ impl<'ctx, T> DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
     // FIXME(20160201): should take a range first for exact size.
     assert!(bound.len() <= self.len);
     DeviceArray2dViewMut{
+      data:     self,
+      bound:    bound,
+      stride:   bound.to_least_stride(),
+    }
+  }
+
+  pub fn into_3d_view_mut(self, bound: (usize, usize, usize)) -> DeviceArray3dViewMut<'ctx, T> {
+    // FIXME(20160201): should take a range first for exact size.
+    assert!(bound.len() <= self.len);
+    DeviceArray3dViewMut{
       data:     self,
       bound:    bound,
       stride:   bound.to_least_stride(),
@@ -436,22 +459,20 @@ impl<T> RawDeviceBuffer<T> where T: Copy {
     assert_eq!(self.len, other.len);
     //assert_eq!(self.size, other.size);
     if self.dev_idx == other.dev_idx {
-      /*unsafe { cuda_memcpy_async(
+      unsafe { cuda_memcpy_async(
           other.as_mut_ptr() as *mut u8,
           self.as_ptr() as *const u8,
-          self.size,
+          self.len * size_of::<T>(),
           CudaMemcpyKind::DeviceToDevice,
-          &self.ctx.stream,
-      ) }.unwrap();*/
-      // TODO(20151212)
-      unimplemented!();
+          &ctx.stream,
+      ) }.unwrap();
     } else {
       unsafe { cuda_memcpy_peer_async(
           other.as_mut_ptr() as *mut u8, other.dev_idx,
           self.as_ptr() as *const u8, self.dev_idx,
           self.len * size_of::<T>(),
           &ctx.stream,
-      ) };
+      ) }.unwrap();
     }
   }
 

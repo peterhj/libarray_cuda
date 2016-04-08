@@ -9,4 +9,5 @@ pub mod context;
 pub mod ext;
 pub mod linalg;
 pub mod memory;
+pub mod random;
 pub mod sync;

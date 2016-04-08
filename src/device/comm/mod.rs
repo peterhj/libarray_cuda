@@ -15,10 +15,10 @@ use float::stub::{f16_stub};
 
 use libc::{c_int};
 use std::cmp::{min};
+use std::marker::{PhantomData};
 use std::sync::{Arc};
 
 pub mod allreduce;
-pub mod gossip;
 
 pub trait DownsampleOp<U> where U: Copy {
   fn raw_downsample(&self, dst: &RawDeviceBufferRef<U>);
@@ -81,8 +81,8 @@ impl ReduceOp for f32 {
   fn reduce<'ctx>(src: &RawDeviceBufferRef<f32>, dst: &RawDeviceBufferRef<f32>, ctx: &DeviceCtxRef<'ctx>) {
     //dst.async_vector_add(1.0, src, ctx);
     unsafe { array_cuda_map_add_f32(
-        src.as_ptr(), src.len() as c_int,
-        dst.as_mut_ptr(),
+        1.0, src.as_ptr(), src.len() as c_int,
+        1.0, dst.as_mut_ptr(),
         ctx.stream.ptr,
     ) };
   }
@@ -99,16 +99,38 @@ pub fn for_all_devices<F, V>(limit: usize, mut f: F) -> V where F: FnMut(&[Devic
   f(&contexts)
 }
 
-pub trait ReduceOperation<T> {
+pub trait ReduceOperation<T> where T: Copy {
   fn reduce<'ctx>(&self, src: &RawDeviceBufferRef<T>, dst: &RawDeviceBufferRef<T>, ctx: &DeviceCtxRef<'ctx>);
 }
 
-pub struct AverageReduceOperation<T> {
+pub struct SumReduceOperation<T> where T: Copy {
+  _marker:      PhantomData<T>,
+}
+
+impl<T> SumReduceOperation<T> where T: Copy {
+  pub fn new() -> SumReduceOperation<T> {
+    SumReduceOperation{
+      _marker:      PhantomData,
+    }
+  }
+}
+
+impl ReduceOperation<f32> for SumReduceOperation<f32> {
+  fn reduce<'ctx>(&self, src: &RawDeviceBufferRef<f32>, dst: &RawDeviceBufferRef<f32>, ctx: &DeviceCtxRef<'ctx>) {
+    unsafe { array_cuda_map_add_f32(
+        1.0, src.as_ptr(), src.len() as c_int,
+        1.0, dst.as_mut_ptr(),
+        ctx.stream.ptr,
+    ) };
+  }
+}
+
+pub struct AverageReduceOperation<T> where T: Copy {
   num_workers:  usize,
   _marker:      PhantomData<T>,
 }
 
-impl<T> AverageReduceOperation<T> {
+impl<T> AverageReduceOperation<T> where T: Copy {
   pub fn new(num_workers: usize) -> AverageReduceOperation<T> {
     AverageReduceOperation{
       num_workers:  num_workers,
@@ -119,10 +141,9 @@ impl<T> AverageReduceOperation<T> {
 
 impl ReduceOperation<f32> for AverageReduceOperation<f32> {
   fn reduce<'ctx>(&self, src: &RawDeviceBufferRef<f32>, dst: &RawDeviceBufferRef<f32>, ctx: &DeviceCtxRef<'ctx>) {
-    let normalize = 1.0 / (self.num_workers as f32);
     unsafe { array_cuda_map_add_f32(
-        normalize, src.as_ptr(), src.len() as c_int,
-        normalize, dst.as_mut_ptr(),
+        0.5, src.as_ptr(), src.len() as c_int,
+        0.5, dst.as_mut_ptr(),
         ctx.stream.ptr,
     ) };
   }

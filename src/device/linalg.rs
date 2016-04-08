@@ -1,6 +1,6 @@
 use device::array::{DeviceArray2dView, DeviceArray2dViewMut};
 use device::context::{DeviceCtxRef};
-use device::memory::{RawDeviceBufferRef};
+use device::memory::{DeviceBufferRef, DeviceBufferRefMut, RawDeviceBufferRef};
 
 use array_new::{Shape, ArrayView, ArrayViewMut};
 use cuda_blas::{
@@ -77,6 +77,38 @@ impl<'ctx> AsyncBlasVectorExt<'ctx> for RawDeviceBufferRef<'ctx, f32> {
         x.as_ptr(), 1,
         self.as_mut_ptr(), 1,
     ) }.ok().expect("cublas saxpy failed");
+  }
+}
+
+impl<'a> BlasVectorExt for DeviceBufferRefMut<'a, f32> {
+  type Matrix = DeviceBufferRef<'a, f32>;
+  type Vector = DeviceBufferRef<'a, f32>;
+
+  fn row_vector_scale(&mut self, alpha: f32) {
+    unimplemented!();
+  }
+
+  fn row_vector_sum(&mut self, alpha: f32, x: &DeviceBufferRef<f32>) {
+    let n = self.len();
+    let x_n = x.len();
+    assert_eq!(n, x_n);
+
+    self.ctx.get_blas().set_pointer_mode(CublasPointerMode::Host);
+    unsafe { cublas_saxpy(
+        &*self.ctx.get_blas(),
+        n,
+        alpha,
+        x.as_ptr(), 1,
+        self.as_mut_ptr(), 1,
+    ) }.unwrap();
+  }
+
+  fn matrix_vector_prod(&mut self,
+      alpha: f32,
+      a: &Self::Matrix, trans_a: Transpose,
+      x: &Self::Vector)
+  {
+    unimplemented!();
   }
 }
 

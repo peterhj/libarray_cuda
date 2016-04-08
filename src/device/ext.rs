@@ -104,8 +104,8 @@ impl<'ctx> DeviceNumExt<f32> for DeviceBufferRefMut<'ctx, f32> {
 
   fn add(&mut self, other: &DeviceBufferRef<'ctx, f32>) {
     unsafe { array_cuda_map_add_f32(
-        other.as_ptr(), other.len() as c_int,
-        self.as_mut_ptr(),
+        1.0, other.as_ptr(), other.len() as c_int,
+        1.0, self.as_mut_ptr(),
         self.ctx.stream.ptr,
     ) };
   }
