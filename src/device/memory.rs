@@ -476,6 +476,30 @@ impl<T> RawDeviceBuffer<T> where T: Copy {
     }
   }
 
+  pub fn sync_store<'ctx>(&self, host_buf: &mut [T], ctx: &DeviceCtxRef<'ctx>) {
+    assert_eq!(self.len, host_buf.len());
+    unsafe { cuda_memcpy_async(
+        host_buf.as_mut_ptr() as *mut u8,
+        self.as_ptr() as *const u8,
+        self.len * size_of::<T>(),
+        CudaMemcpyKind::DeviceToHost,
+        &ctx.stream,
+    ) }.unwrap();
+    ctx.blocking_sync();
+  }
+
+  pub fn sync_load<'ctx>(&mut self, host_buf: &[T], ctx: &DeviceCtxRef<'ctx>) {
+    assert_eq!(self.len, host_buf.len());
+    unsafe { cuda_memcpy_async(
+        self.as_mut_ptr() as *mut u8,
+        host_buf.as_ptr() as *const u8,
+        self.len * size_of::<T>(),
+        CudaMemcpyKind::HostToDevice,
+        &ctx.stream,
+    ) }.unwrap();
+    ctx.blocking_sync();
+  }
+
   pub fn as_ref<'a>(&'a self) -> RawDeviceBufferRef<'a, T> {
     RawDeviceBufferRef{
       dev_idx:  self.dev_idx,
