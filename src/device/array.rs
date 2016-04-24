@@ -80,6 +80,10 @@ impl DeviceArray2d<f32> {
       stride:   bound.to_least_stride(),
     }
   }
+
+  pub fn len(&self) -> usize {
+    self.bound.len()
+  }
 }
 
 pub struct DeviceArray2dView<'a, T> where T: 'a + Copy {

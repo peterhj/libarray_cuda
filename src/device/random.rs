@@ -30,3 +30,12 @@ impl<'a> RandomSampleExt<UniformDist> for DeviceBufferRefMut<'a, f32> {
     }
   }
 }
+
+impl<'a> RandomSampleExt<GaussianDist<f32>> for DeviceBufferRefMut<'a, f32> {
+  fn sample(&mut self, dist: &GaussianDist<f32>) {
+    match unsafe { self.ctx.get_rng().generate_normal(self.as_mut_ptr(), self.len(), dist.mean, dist.std) } {
+      Ok(_) => {}
+      Err(e) => panic!("sample: failed to generate gaussian"),
+    }
+  }
+}

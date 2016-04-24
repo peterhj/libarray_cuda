@@ -1,5 +1,6 @@
 use device::array::{DeviceArray2dView, DeviceArray2dViewMut};
-use device::memory::{DeviceBufferRef, DeviceBufferRefMut};
+use device::context::{DeviceCtxRef};
+use device::memory::{DeviceBufferRef, DeviceBufferRefMut, RawDeviceBufferRef};
 use ffi::*;
 
 use array_new::{ArrayView, ArrayViewMut};
@@ -49,6 +50,12 @@ impl<'ctx> DeviceCastBytesExt<f32> for DeviceBufferRef<'ctx, u8> {
   }
 }
 
+pub trait DeviceAsyncNumExt<T> {
+  type Ctx;
+
+  fn async_set_constant(&self, alpha: T, ctx: &Self::Ctx);
+}
+
 pub trait DeviceNumExt<T> {
   type Ref;
 
@@ -82,6 +89,27 @@ impl<'ctx> DeviceNumExt<i32> for DeviceBufferRefMut<'ctx, i32> {
         self.ctx.stream.ptr,
     ) };
   }
+}
+
+impl<'ctx> DeviceAsyncNumExt<f32> for RawDeviceBufferRef<'ctx, f32> {
+  //type Ref = DeviceBufferRef<'ctx, f32>;
+  type Ctx = DeviceCtxRef<'ctx>;
+
+  fn async_set_constant(&self, alpha: f32, ctx: &DeviceCtxRef<'ctx>) {
+    unsafe { array_cuda_map_set_constant_f32(
+        self.as_mut_ptr(), self.len() as c_int,
+        alpha,
+        ctx.stream.ptr,
+    ) };
+  }
+
+  /*fn add(&mut self, other: &DeviceBufferRef<'ctx, i32>) {
+    unsafe { array_cuda_map_add_i32(
+        other.as_ptr(), other.len() as c_int,
+        self.as_mut_ptr(),
+        self.ctx.stream.ptr,
+    ) };
+  }*/
 }
 
 impl<'ctx> DeviceNumExt<f32> for DeviceBufferRefMut<'ctx, f32> {

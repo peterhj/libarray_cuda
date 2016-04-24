@@ -61,6 +61,7 @@ pub trait AsyncBlasVectorExt<'ctx> {
   type Vector;
 
   fn async_vector_add(&self, alpha: f32, x: &Self::Vector, ctx: &'ctx Self::Ctx);
+  fn async_vector_scale(&self, alpha: f32, ctx: &'ctx Self::Ctx);
 }
 
 impl<'ctx> AsyncBlasVectorExt<'ctx> for RawDeviceBufferRef<'ctx, f32> {
@@ -77,6 +78,16 @@ impl<'ctx> AsyncBlasVectorExt<'ctx> for RawDeviceBufferRef<'ctx, f32> {
         x.as_ptr(), 1,
         self.as_mut_ptr(), 1,
     ) }.ok().expect("cublas saxpy failed");
+  }
+
+  fn async_vector_scale(&self, alpha: f32, ctx: &'ctx DeviceCtxRef<'ctx>) {
+    ctx.get_blas().set_pointer_mode(CublasPointerMode::Host);
+    unsafe { cublas_sscal(
+        &*ctx.get_blas(),
+        self.len(),
+        alpha,
+        self.as_mut_ptr(), 1,
+    ) }.unwrap();
   }
 }
 

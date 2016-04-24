@@ -426,6 +426,9 @@ impl<T> Drop for RawDeviceBuffer<T> where T: Copy {
 
 impl<T> RawDeviceBuffer<T> where T: Copy {
   pub unsafe fn new(len: usize, ctx: &DeviceCtxRef) -> RawDeviceBuffer<T> {
+    let dev_idx = ctx.device();
+    // FIXME(20160417): for debugging.
+    //assert_eq!(dev_idx, 0);
     let min_size = len * size_of::<T>();
     let size = (min_size + WARP_SIZE - 1) / WARP_SIZE * WARP_SIZE;
     let mut dptr: *mut c_void = null_mut();
@@ -436,7 +439,7 @@ impl<T> RawDeviceBuffer<T> where T: Copy {
       }
     }
     RawDeviceBuffer{
-      dev_idx:  ctx.device(),
+      dev_idx:  dev_idx,
       dptr:     dptr as *mut T,
       len:      len,
       //size:     size,
