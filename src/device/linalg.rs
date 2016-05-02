@@ -96,7 +96,14 @@ impl<'a> BlasVectorExt for DeviceBufferRefMut<'a, f32> {
   type Vector = DeviceBufferRef<'a, f32>;
 
   fn row_vector_scale(&mut self, alpha: f32) {
-    unimplemented!();
+    let n = self.len();
+    self.ctx.get_blas().set_pointer_mode(CublasPointerMode::Host);
+    unsafe { cublas_sscal(
+        &*self.ctx.get_blas(),
+        n,
+        alpha,
+        self.as_mut_ptr(), 1,
+    ) }.unwrap();
   }
 
   fn row_vector_sum(&mut self, alpha: f32, x: &DeviceBufferRef<f32>) {
