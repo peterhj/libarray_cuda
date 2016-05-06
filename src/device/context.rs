@@ -469,8 +469,10 @@ impl<'ctx> DeviceCtxRef<'ctx> {
     {
       let mut rng = self.ctx.rng.borrow_mut();
       if rng.is_none() {
-        let new_rng = CurandGenerator::create()
-          .ok().expect("failed to create curand handle!");
+        let new_rng = match CurandGenerator::create() {
+          Err(e) => panic!("failed to create curand handle: {:?}", e),
+          Ok(rng) => rng,
+        };
         new_rng.set_stream(&self.ctx.stream)
           .ok().expect("failed to set stream for curand handle!");
         new_rng.set_seed(thread_rng().next_u64())

@@ -210,6 +210,21 @@ impl<'ctx, T> DeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
     self.dptr as *const T
   }
 
+  pub fn range(&self, from: usize, to: usize) -> DeviceBufferRef<'ctx, T> {
+    assert!(from <= self.len);
+    assert!(to <= self.len);
+    assert!(from <= to);
+    self.ctx.stream.wait_event(&self.dev_sync).unwrap();
+    DeviceBufferRef{
+      ctx:  self.ctx,
+      dev_sync: self.dev_sync.clone(),
+      dev_idx:  self.dev_idx,
+      dptr: unsafe { (self.dptr as *const T).offset(from as isize) },
+      len:  to - from,
+      //size: (to - from) * size_of::<T>(),
+    }
+  }
+
   pub fn into_2d_view(self, bound: (usize, usize)) -> DeviceArray2dView<'ctx, T> {
     // FIXME(20160201): should take a range first for exact size.
     assert!(bound.len() <= self.len);
@@ -303,6 +318,21 @@ impl<'ctx, T> DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
 
   pub unsafe fn as_mut_ptr(&mut self) -> *mut T {
     self.dptr
+  }
+
+  pub fn mut_range(&mut self, from: usize, to: usize) -> DeviceBufferRefMut<'ctx, T> {
+    assert!(from <= self.len);
+    assert!(to <= self.len);
+    assert!(from <= to);
+    self.ctx.stream.wait_event(&self.dev_sync).unwrap();
+    DeviceBufferRefMut{
+      ctx:  self.ctx,
+      dev_sync: self.dev_sync.clone(),
+      dev_idx:  self.dev_idx,
+      dptr: unsafe { self.dptr.offset(from as isize) },
+      len:  to - from,
+      //size: (to - from) * size_of::<T>(),
+    }
   }
 
   pub fn into_2d_view_mut(self, bound: (usize, usize)) -> DeviceArray2dViewMut<'ctx, T> {
