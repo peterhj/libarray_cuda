@@ -417,6 +417,17 @@ impl<'ctx, T> DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
     self.ctx.blocking_sync();
   }
 
+  pub unsafe fn unsafe_async_load(&mut self, host_buf: &[T]) {
+    assert_eq!(self.len, host_buf.len());
+    unsafe { cuda_memcpy_async(
+        self.as_mut_ptr() as *mut u8,
+        host_buf.as_ptr() as *const u8,
+        self.len * size_of::<T>(),
+        CudaMemcpyKind::HostToDevice,
+        &self.ctx.stream,
+    ) }.unwrap();
+  }
+
   pub fn load(&mut self, host_buf: &HostBufferRef<T>) {
     assert_eq!(self.len, host_buf.len());
     unsafe { cuda_memcpy_async(
