@@ -3,7 +3,7 @@ use device::context::{DeviceCtxRef};
 use device::memory::{DeviceBufferRef, DeviceBufferRefMut, RawDeviceBufferRef};
 use ffi::*;
 
-use array_new::{ArrayView, ArrayViewMut};
+use array::{ArrayView, ArrayViewMut};
 
 use cuda::runtime::{cuda_memset_async};
 use libc::{c_int};

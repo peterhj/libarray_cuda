@@ -1,7 +1,7 @@
 use device::context::{DeviceCtxRef};
 use device::memory::{DeviceZeroExt, DeviceBuffer, DeviceBufferRef, DeviceBufferRefMut};
 
-use array_new::{
+use array::{
   Shape, Array, AsyncArray, ArrayView, ArrayViewMut,
   Array2dView, Array2dViewMut,
   Array3dView, Array3dViewMut,

@@ -2,7 +2,7 @@ use device::array::{DeviceArray2dView, DeviceArray2dViewMut};
 use device::context::{DeviceCtxRef};
 use device::memory::{DeviceBufferRef, DeviceBufferRefMut, RawDeviceBufferRef};
 
-use array_new::{Shape, ArrayView, ArrayViewMut};
+use array::{Shape, ArrayView, ArrayViewMut};
 use cuda_blas::{
   CublasPointerMode,
   CublasTranspose,

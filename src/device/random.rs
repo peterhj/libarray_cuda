@@ -2,23 +2,16 @@ use device::array::{DeviceArray2dView, DeviceArray2dViewMut};
 use device::context::{DeviceCtxRef};
 use device::memory::{DeviceBufferRef, DeviceBufferRefMut, RawDeviceBufferRef};
 
-use array_new::{Shape, ArrayView, ArrayViewMut};
-
-pub trait SamplingDistribution {
-}
+use array::{Shape, ArrayView, ArrayViewMut};
 
 pub struct UniformDist;
-
-impl SamplingDistribution for UniformDist {}
 
 pub struct GaussianDist<T> {
   pub mean: T,
   pub std:  T,
 }
 
-impl<T> SamplingDistribution for GaussianDist<T> {}
-
-pub trait RandomSampleExt<Dist> where Dist: SamplingDistribution {
+pub trait RandomSampleExt<Dist> {
   fn sample(&mut self, dist: &Dist);
 }
 

@@ -24,8 +24,9 @@ scoped_threadpool = "=0.1.6"
 time = "*"
 vec_map = "*"
 
-array_new = { path = "../libarray_new" }
-cuda = { path = "../libcuda" }
+array = { path = "../libarray" }
+#cuda = { path = "../libcuda" }
+cuda = { git = "https://github.com/peterhj/libcuda.git" }
 cuda_blas = { path = "../libcuda_blas" }
 cuda_dnn = { path = "../libcuda_dnn" }
 #cuda_dnn = { path = "../libcuda_dnn", features = ["v4"] }

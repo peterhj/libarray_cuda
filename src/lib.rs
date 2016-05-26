@@ -5,7 +5,7 @@
 #![feature(unique)]
 //#![feature(zero_one)]
 
-extern crate array_new;
+extern crate array;
 extern crate cuda;
 extern crate cuda_blas;
 extern crate cuda_dnn;

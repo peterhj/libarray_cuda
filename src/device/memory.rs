@@ -6,7 +6,7 @@ use device::context::{DeviceCtxRef};
 use device::ext::{DeviceBytesExt, DeviceNumExt};
 use host_memory::{HostBufferRef};
 
-use array_new::{Shape};
+use array::{Shape};
 use cuda::ffi::runtime::{
   cudaError,
   cudaFree,
@@ -363,6 +363,22 @@ impl<'ctx, T> DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
       data:     self,
       bound:    bound,
       stride:   bound.to_least_stride(),
+    }
+  }
+
+  pub fn copy(&mut self, src: &DeviceBufferRef<'ctx, T>) {
+    assert_eq!(self.len, src.len);
+    if self.dev_idx == src.dev_idx {
+      unsafe { cuda_memcpy_async(
+          self.as_mut_ptr() as *mut u8,
+          src.as_ptr() as *const u8,
+          self.len * size_of::<T>(),
+          CudaMemcpyKind::DeviceToDevice,
+          &self.ctx.stream,
+      ) }.unwrap();
+    } else {
+      // TODO(20151211)
+      unimplemented!();
     }
   }
 
