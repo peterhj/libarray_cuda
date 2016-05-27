@@ -29,6 +29,43 @@ impl Transpose {
   }
 }
 
+pub trait VectorExt {
+  type Vector;
+
+  fn vector_scale(&mut self, alpha: f32);
+  fn vector_add(&mut self, alpha: f32, x: &Self::Vector);
+}
+
+impl<'a> VectorExt for DeviceBufferRefMut<'a, f32> {
+  type Vector = DeviceBufferRef<'a, f32>;
+
+  fn vector_scale(&mut self, alpha: f32) {
+    let n = self.len();
+    self.ctx.get_blas().set_pointer_mode(CublasPointerMode::Host);
+    unsafe { cublas_sscal(
+        &*self.ctx.get_blas(),
+        n,
+        alpha,
+        self.as_mut_ptr(), 1,
+    ) }.unwrap();
+  }
+
+  fn vector_add(&mut self, alpha: f32, x: &DeviceBufferRef<'a, f32>) {
+    let n = self.len();
+    let x_n = x.len();
+    assert_eq!(n, x_n);
+
+    self.ctx.get_blas().set_pointer_mode(CublasPointerMode::Host);
+    unsafe { cublas_saxpy(
+        &*self.ctx.get_blas(),
+        n,
+        alpha,
+        x.as_ptr(), 1,
+        self.as_mut_ptr(), 1,
+    ) }.unwrap();
+  }
+}
+
 pub trait BlasVectorExt {
   type Matrix;
   type Vector;

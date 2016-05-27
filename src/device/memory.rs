@@ -86,6 +86,10 @@ impl<T> DeviceBuffer<T> where T: Copy {
     }
   }
 
+  pub fn len(&self) -> usize {
+    self.len
+  }
+
   /*pub unsafe fn as_ptr(&self) -> *const T {
     self.dptr as *const T
   }
@@ -149,11 +153,12 @@ impl<T> DeviceBuffer<T> where T: Copy {
   }
 }
 
-pub trait DeviceZeroExt<T> where T: Copy {
+pub trait DeviceBufferInitExt {
   fn zeros(len: usize, ctx: &DeviceCtxRef) -> Self;
+  fn ones(len: usize, ctx: &DeviceCtxRef) -> Self;
 }
 
-impl DeviceZeroExt<u8> for DeviceBuffer<u8> {
+impl DeviceBufferInitExt for DeviceBuffer<u8> {
   fn zeros(len: usize, ctx: &DeviceCtxRef) -> DeviceBuffer<u8> {
     let mut buf = unsafe { Self::new(len, ctx) };
     {
@@ -162,10 +167,28 @@ impl DeviceZeroExt<u8> for DeviceBuffer<u8> {
     }
     buf
   }
+
+  fn ones(len: usize, ctx: &DeviceCtxRef) -> DeviceBuffer<u8> {
+    let mut buf = unsafe { Self::new(len, ctx) };
+    {
+      let mut buf_ref = buf.as_ref_mut(ctx);
+      buf_ref.set_memory(1);
+    }
+    buf
+  }
 }
 
-impl DeviceZeroExt<i32> for DeviceBuffer<i32> {
+impl DeviceBufferInitExt for DeviceBuffer<i32> {
   fn zeros(len: usize, ctx: &DeviceCtxRef) -> DeviceBuffer<i32> {
+    let mut buf = unsafe { Self::new(len, ctx) };
+    {
+      let mut buf_ref = buf.as_ref_mut(ctx);
+      buf_ref.set_constant(0);
+    }
+    buf
+  }
+
+  fn ones(len: usize, ctx: &DeviceCtxRef) -> DeviceBuffer<i32> {
     let mut buf = unsafe { Self::new(len, ctx) };
     {
       let mut buf_ref = buf.as_ref_mut(ctx);
@@ -175,12 +198,21 @@ impl DeviceZeroExt<i32> for DeviceBuffer<i32> {
   }
 }
 
-impl DeviceZeroExt<u32> for DeviceBuffer<f32> {
+impl DeviceBufferInitExt for DeviceBuffer<f32> {
   fn zeros(len: usize, ctx: &DeviceCtxRef) -> DeviceBuffer<f32> {
     let mut buf = unsafe { Self::new(len, ctx) };
     {
       let mut buf_ref = buf.as_ref_mut(ctx);
       buf_ref.set_constant(0.0);
+    }
+    buf
+  }
+
+  fn ones(len: usize, ctx: &DeviceCtxRef) -> DeviceBuffer<f32> {
+    let mut buf = unsafe { Self::new(len, ctx) };
+    {
+      let mut buf_ref = buf.as_ref_mut(ctx);
+      buf_ref.set_constant(1.0);
     }
     buf
   }
