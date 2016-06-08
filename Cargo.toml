@@ -8,9 +8,9 @@ build = "build.rs"
 name = "array_cuda"
 path = "src/lib.rs"
 
-[[bin]]
-name = "test"
-path = "tools/test.rs"
+#[[bin]]
+#name = "test"
+#path = "tools/test.rs"
 
 [build-dependencies]
 #path = "../gcc-rs"

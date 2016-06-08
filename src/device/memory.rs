@@ -22,25 +22,31 @@ use std::marker::{PhantomData};
 use std::mem::{size_of};
 use std::ptr::{null_mut};
 use std::rc::{Rc};
-//use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 const WARP_SIZE: usize = 128;
 
-pub trait DeviceStorage<T> where T: Copy {
+/*pub trait DeviceStorage<T> where T: Copy {
   type Ref:     DeviceStorageRef<T>;
   type RefMut:  DeviceStorageRefMut<T>;
 
   fn as_ref<'ctx>(&mut self, ctx: &'ctx DeviceCtxRef<'ctx>) -> Self::Ref;
   fn as_ref_mut<'ctx>(&mut self, ctx: &'ctx DeviceCtxRef<'ctx>) -> Self::RefMut;
-}
+}*/
 
 pub trait DeviceStorageRef<T> where T: Copy {
+  fn device_idx(&self) -> usize;
+  fn len(&self) -> usize;
   unsafe fn as_ptr(&self) -> *const T;
 }
 
-pub trait DeviceStorageRefMut<T> where T: Copy {
-  unsafe fn as_ptr(&self) -> *const T;
+pub trait DeviceStorageRefMut<T>: DeviceStorageRef<T> where T: Copy {
   unsafe fn as_mut_ptr(&mut self) -> *mut T;
+}
+
+pub trait DeviceBufferInitExt {
+  fn zeros(len: usize, ctx: &DeviceCtxRef) -> Self;
+  fn ones(len: usize, ctx: &DeviceCtxRef) -> Self;
 }
 
 pub struct DeviceBuffer<T> where T: Copy {
@@ -48,7 +54,6 @@ pub struct DeviceBuffer<T> where T: Copy {
   dev_idx:  usize,
   dptr: *mut T,
   len:  usize,
-  //size: usize,
 }
 
 impl<T> Drop for DeviceBuffer<T> where T: Copy {
@@ -82,21 +87,12 @@ impl<T> DeviceBuffer<T> where T: Copy {
       dev_idx:  ctx.device(),
       dptr: dptr as *mut T,
       len:  len,
-      //size: size,
     }
   }
 
   pub fn len(&self) -> usize {
     self.len
   }
-
-  /*pub unsafe fn as_ptr(&self) -> *const T {
-    self.dptr as *const T
-  }
-
-  pub unsafe fn as_mut_ptr(&mut self) -> *mut T {
-    self.dptr
-  }*/
 
   pub fn as_ref<'ctx>(&mut self, ctx: &'ctx DeviceCtxRef) -> DeviceBufferRef<'ctx, T> {
     ctx.stream.wait_event(&self.dev_sync).unwrap();
@@ -106,7 +102,6 @@ impl<T> DeviceBuffer<T> where T: Copy {
       dev_idx:  self.dev_idx,
       dptr: self.dptr as *const T,
       len:  self.len,
-      //size: self.size,
     }
   }
 
@@ -121,7 +116,6 @@ impl<T> DeviceBuffer<T> where T: Copy {
       dev_idx:  self.dev_idx,
       dptr: unsafe { (self.dptr as *const T).offset(from as isize) },
       len:  to - from,
-      //size: (to - from) * size_of::<T>(),
     }
   }
 
@@ -133,7 +127,6 @@ impl<T> DeviceBuffer<T> where T: Copy {
       dev_idx:  self.dev_idx,
       dptr: self.dptr,
       len:  self.len,
-      //size: self.size,
     }
   }
 
@@ -148,14 +141,8 @@ impl<T> DeviceBuffer<T> where T: Copy {
       dev_idx:  self.dev_idx,
       dptr: unsafe { self.dptr.offset(from as isize) },
       len:  to - from,
-      //size: (to - from) * size_of::<T>(),
     }
   }
-}
-
-pub trait DeviceBufferInitExt {
-  fn zeros(len: usize, ctx: &DeviceCtxRef) -> Self;
-  fn ones(len: usize, ctx: &DeviceCtxRef) -> Self;
 }
 
 impl DeviceBufferInitExt for DeviceBuffer<u8> {
@@ -224,7 +211,6 @@ pub struct DeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
   dev_idx:  usize,
   dptr: *const T,
   len:  usize,
-  //size: usize,
 }
 
 impl<'ctx, T> Drop for DeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
@@ -232,6 +218,12 @@ impl<'ctx, T> Drop for DeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
     self.dev_sync.record(&self.ctx.stream).unwrap();
   }
 }
+
+/*impl<'ctx, T> DeviceStorageRef<T> for DeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
+  pub unsafe fn as_ptr(&self) -> *const T {
+    self.dptr as *const T
+  }
+}*/
 
 impl<'ctx, T> DeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
   pub fn len(&self) -> usize {
@@ -253,7 +245,6 @@ impl<'ctx, T> DeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
       dev_idx:  self.dev_idx,
       dptr: unsafe { (self.dptr as *const T).offset(from as isize) },
       len:  to - from,
-      //size: (to - from) * size_of::<T>(),
     }
   }
 
@@ -341,7 +332,6 @@ pub struct DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
   dev_idx:  usize,
   dptr: *mut T,
   len:  usize,
-  //size: usize,
 }
 
 impl<'ctx, T> Drop for DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
@@ -374,7 +364,6 @@ impl<'ctx, T> DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
       dev_idx:  self.dev_idx,
       dptr: unsafe { self.dptr.offset(from as isize) },
       len:  to - from,
-      //size: (to - from) * size_of::<T>(),
     }
   }
 
@@ -496,6 +485,289 @@ impl<'ctx, T> DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
         CudaMemcpyKind::HostToDevice,
         &self.ctx.stream,
     ) }.unwrap();
+  }
+}
+
+pub struct SharedDeviceBuffer<T> where T: Copy {
+  lock:     Arc<RwLock<()>>,
+  dev_sync: Arc<Mutex<CudaEvent>>,
+  //dev_sync: Arc<Mutex<CudaEvent>>,
+  //dev_sync: Arc<CudaEvent>,
+  dev_idx:  usize,
+  dptr:     *mut T,
+  len:      usize,
+}
+
+unsafe impl<T> Send for SharedDeviceBuffer<T> where T: Copy {}
+unsafe impl<T> Sync for SharedDeviceBuffer<T> where T: Copy {}
+
+impl<T> Drop for SharedDeviceBuffer<T> where T: Copy {
+  fn drop(&mut self) {
+    match unsafe { cudaFree(self.dptr as *mut c_void) } {
+      cudaError::Success => {}
+      cudaError::CudartUnloading => {
+        // XXX(20160308): Sometimes drop() is called while the global runtime
+        // is shutting down; suppress these errors.
+      }
+      e => {
+        panic!("failed to free device memory: {:?}", e);
+      }
+    }
+  }
+}
+
+impl<T> SharedDeviceBuffer<T> where T: Copy {
+  pub unsafe fn new(len: usize, ctx: &DeviceCtxRef) -> SharedDeviceBuffer<T> {
+    let min_size = len * size_of::<T>();
+    let alloc_size = (min_size + WARP_SIZE - 1) / WARP_SIZE * WARP_SIZE;
+    let mut dptr: *mut c_void = null_mut();
+    match unsafe { cudaMalloc(&mut dptr as *mut *mut c_void, alloc_size) } {
+      cudaError::Success => {}
+      e => {
+        panic!("failed to allocate DeviceBuffer: {:?}", e);
+      }
+    }
+    SharedDeviceBuffer{
+      lock:     Arc::new(RwLock::new(())),
+      //dev_sync: Arc::new(RwLock::new(CudaEvent::create_with_flags(0x02).unwrap())),
+      dev_sync: Arc::new(Mutex::new(CudaEvent::create_with_flags(0x02).unwrap())),
+      //dev_sync: Arc::new(CudaEvent::create_with_flags(0x02).unwrap()),
+      dev_idx:  ctx.device(),
+      dptr:     dptr as *mut T,
+      len:      len,
+    }
+  }
+
+  pub fn len(&self) -> usize {
+    self.len
+  }
+
+  pub fn as_ref<'ctx>(&'ctx self, ctx: &'ctx DeviceCtxRef) -> SharedDeviceBufferRef<'ctx, T> {
+    ctx.stream.wait_event(&*self.dev_sync.lock().unwrap()).unwrap();
+    SharedDeviceBufferRef{
+      ctx:      ctx,
+      guard:    self.lock.read().unwrap(),
+      dev_sync: self.dev_sync.clone(),
+      dev_idx:  self.dev_idx,
+      dptr:     self.dptr as *const T,
+      len:      self.len,
+    }
+  }
+
+  /*pub fn as_ref_range<'ctx>(&mut self, from: usize, to: usize, ctx: &'ctx DeviceCtxRef) -> DeviceBufferRef<'ctx, T> {
+    assert!(from <= self.len);
+    assert!(to <= self.len);
+    assert!(from <= to);
+    ctx.stream.wait_event(&self.dev_sync).unwrap();
+    DeviceBufferRef{
+      ctx:  ctx,
+      dev_sync: self.dev_sync.clone(),
+      dev_idx:  self.dev_idx,
+      dptr: unsafe { (self.dptr as *const T).offset(from as isize) },
+      len:  to - from,
+      //size: (to - from) * size_of::<T>(),
+    }
+  }*/
+
+  pub fn as_ref_mut<'ctx>(&'ctx self, ctx: &'ctx DeviceCtxRef) -> SharedDeviceBufferRefMut<'ctx, T> {
+    ctx.stream.wait_event(&*self.dev_sync.lock().unwrap()).unwrap();
+    SharedDeviceBufferRefMut{
+      ctx:      ctx,
+      guard:    self.lock.write().unwrap(),
+      dev_sync: self.dev_sync.clone(),
+      dev_idx:  self.dev_idx,
+      dptr:     self.dptr,
+      len:      self.len,
+    }
+  }
+
+  /*pub fn as_ref_mut_range<'ctx>(&mut self, from: usize, to: usize, ctx: &'ctx DeviceCtxRef) -> DeviceBufferRefMut<'ctx, T> {
+    assert!(from <= self.len);
+    assert!(to <= self.len);
+    assert!(from <= to);
+    ctx.stream.wait_event(&self.dev_sync).unwrap();
+    DeviceBufferRefMut{
+      ctx:  ctx,
+      dev_sync: self.dev_sync.clone(),
+      dev_idx:  self.dev_idx,
+      dptr: unsafe { self.dptr.offset(from as isize) },
+      len:  to - from,
+      //size: (to - from) * size_of::<T>(),
+    }
+  }*/
+}
+
+/*impl DeviceBufferInitExt for SharedDeviceBuffer<u8> {
+  fn zeros(len: usize, ctx: &DeviceCtxRef) -> SharedDeviceBuffer<u8> {
+    let mut buf = unsafe { Self::new(len, ctx) };
+    {
+      let mut buf_ref = buf.as_ref_mut(ctx);
+      buf_ref.set_memory(0);
+    }
+    buf
+  }
+
+  fn ones(len: usize, ctx: &DeviceCtxRef) -> SharedDeviceBuffer<u8> {
+    let mut buf = unsafe { Self::new(len, ctx) };
+    {
+      let mut buf_ref = buf.as_ref_mut(ctx);
+      buf_ref.set_memory(1);
+    }
+    buf
+  }
+}
+
+impl DeviceBufferInitExt for SharedDeviceBuffer<i32> {
+  fn zeros(len: usize, ctx: &DeviceCtxRef) -> SharedDeviceBuffer<i32> {
+    let mut buf = unsafe { Self::new(len, ctx) };
+    {
+      let mut buf_ref = buf.as_ref_mut(ctx);
+      buf_ref.set_constant(0);
+    }
+    buf
+  }
+
+  fn ones(len: usize, ctx: &DeviceCtxRef) -> SharedDeviceBuffer<i32> {
+    let mut buf = unsafe { Self::new(len, ctx) };
+    {
+      let mut buf_ref = buf.as_ref_mut(ctx);
+      buf_ref.set_constant(0);
+    }
+    buf
+  }
+}
+
+impl DeviceBufferInitExt for SharedDeviceBuffer<f32> {
+  fn zeros(len: usize, ctx: &DeviceCtxRef) -> SharedDeviceBuffer<f32> {
+    let mut buf = unsafe { Self::new(len, ctx) };
+    {
+      let mut buf_ref = buf.as_ref_mut(ctx);
+      buf_ref.set_constant(0.0);
+    }
+    buf
+  }
+
+  fn ones(len: usize, ctx: &DeviceCtxRef) -> SharedDeviceBuffer<f32> {
+    let mut buf = unsafe { Self::new(len, ctx) };
+    {
+      let mut buf_ref = buf.as_ref_mut(ctx);
+      buf_ref.set_constant(1.0);
+    }
+    buf
+  }
+}*/
+
+pub struct SharedDeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
+  pub ctx:  &'ctx DeviceCtxRef<'ctx>,
+  guard:    RwLockReadGuard<'ctx, ()>,
+  dev_sync: Arc<Mutex<CudaEvent>>,
+  dev_idx:  usize,
+  dptr:     *const T,
+  len:      usize,
+}
+
+impl<'ctx, T> Drop for SharedDeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
+  fn drop(&mut self) {
+    self.dev_sync.lock().unwrap().record(&self.ctx.stream).unwrap();
+  }
+}
+
+impl<'ctx, T> SharedDeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
+  pub fn len(&self) -> usize {
+    self.len
+  }
+
+  pub unsafe fn as_ptr(&self) -> *const T {
+    self.dptr as *const T
+  }
+}
+
+pub struct SharedDeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
+  pub ctx:  &'ctx DeviceCtxRef<'ctx>,
+  guard:    RwLockWriteGuard<'ctx, ()>,
+  dev_sync: Arc<Mutex<CudaEvent>>,
+  dev_idx:  usize,
+  dptr:     *mut T,
+  len:      usize,
+}
+
+impl<'ctx, T> Drop for SharedDeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
+  fn drop(&mut self) {
+    self.dev_sync.lock().unwrap().record(&self.ctx.stream).unwrap();
+  }
+}
+
+impl<'ctx, T> SharedDeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
+  pub fn len(&self) -> usize {
+    self.len
+  }
+
+  pub unsafe fn as_ptr(&self) -> *const T {
+    self.dptr as *const T
+  }
+
+  pub unsafe fn as_mut_ptr(&mut self) -> *mut T {
+    self.dptr
+  }
+
+  pub fn generic_copy<U>(&mut self, src: &U) where U: DeviceStorageRef<T> {
+    assert_eq!(self.len, src.len());
+    if self.dev_idx == src.device_idx() {
+      unsafe { cuda_memcpy_async(
+          self.as_mut_ptr() as *mut u8,
+          src.as_ptr() as *const u8,
+          self.len * size_of::<T>(),
+          CudaMemcpyKind::DeviceToDevice,
+          &self.ctx.stream,
+      ) }.unwrap();
+    } else {
+      unsafe { cuda_memcpy_peer_async(
+          self.as_mut_ptr() as *mut u8, self.dev_idx,
+          src.as_ptr() as *const u8, src.device_idx(),
+          self.len * size_of::<T>(),
+          &self.ctx.stream,
+      ) }.unwrap();
+    }
+  }
+
+  pub fn copy_single(&mut self, src: &DeviceBufferRef<T>) {
+    assert_eq!(self.len, src.len());
+    if self.dev_idx == src.dev_idx {
+      unsafe { cuda_memcpy_async(
+          self.as_mut_ptr() as *mut u8,
+          src.as_ptr() as *const u8,
+          self.len * size_of::<T>(),
+          CudaMemcpyKind::DeviceToDevice,
+          &self.ctx.stream,
+      ) }.unwrap();
+    } else {
+      unsafe { cuda_memcpy_peer_async(
+          self.as_mut_ptr() as *mut u8, self.dev_idx,
+          src.as_ptr() as *const u8, src.dev_idx,
+          self.len * size_of::<T>(),
+          &self.ctx.stream,
+      ) }.unwrap();
+    }
+  }
+
+  pub fn copy(&mut self, src: &SharedDeviceBufferRef<T>) {
+    assert_eq!(self.len, src.len());
+    if self.dev_idx == src.dev_idx {
+      unsafe { cuda_memcpy_async(
+          self.as_mut_ptr() as *mut u8,
+          src.as_ptr() as *const u8,
+          self.len * size_of::<T>(),
+          CudaMemcpyKind::DeviceToDevice,
+          &self.ctx.stream,
+      ) }.unwrap();
+    } else {
+      unsafe { cuda_memcpy_peer_async(
+          self.as_mut_ptr() as *mut u8, self.dev_idx,
+          src.as_ptr() as *const u8, src.dev_idx,
+          self.len * size_of::<T>(),
+          &self.ctx.stream,
+      ) }.unwrap();
+    }
   }
 }
 

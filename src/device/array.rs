@@ -1,5 +1,8 @@
 use device::context::{DeviceCtxRef};
-use device::memory::{DeviceBufferInitExt, DeviceBuffer, DeviceBufferRef, DeviceBufferRefMut};
+use device::memory::{
+  DeviceStorageRef,
+  DeviceBufferInitExt, DeviceBuffer, DeviceBufferRef, DeviceBufferRefMut,
+};
 
 use array::{
   Shape, Array, AsyncArray, ArrayView, ArrayViewMut,
@@ -12,6 +15,13 @@ use cuda::runtime::{
 };
 
 use std::mem::{size_of};
+
+pub trait DeviceArrayView<T>: DeviceStorageRef<T> where T: Copy {
+  type S: Shape;
+
+  fn bound(&self) -> Self::S;
+  fn stride(&self) -> <Self::S as Shape>::Stride;
+}
 
 pub struct DeviceArray2d<T> where T: Copy {
   data:     DeviceBuffer<T>,
