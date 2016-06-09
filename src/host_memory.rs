@@ -1,7 +1,7 @@
 use device::context::{DeviceCtxRef};
 
 use cuda::ffi::runtime::{
-  cudaError,
+  cudaError_t,
   cudaFreeHost,
   cudaHostAlloc,
   cudaHostGetDevicePointer,
@@ -40,7 +40,7 @@ impl<T> Drop for PageLockedBuffer<T> where T: Copy {
   fn drop(&mut self) {
     self.sync();
     match unsafe { cudaFreeHost(*self.ptr as *mut c_void) } {
-      cudaError::Success => {}
+      cudaError_t::Success => {}
       e => {
         panic!("failed to deallocate pinned host memory: {:?}", e);
       }
@@ -54,7 +54,7 @@ impl<T> PageLockedBuffer<T> where T: Copy {
     let size = (min_size + WARP_SIZE - 1) / WARP_SIZE * WARP_SIZE;
     let mut ptr: *mut c_void = null_mut();
     match unsafe { cudaHostAlloc(&mut ptr as *mut *mut c_void, size, 0) } {
-      cudaError::Success => {}
+      cudaError_t::Success => {}
       e => {
         panic!("failed to allocate PageLockedBuffer: {:?}", e);
       }
@@ -146,7 +146,7 @@ pub struct PageLockedMappedBuffer<T> where T: Copy {
 impl<T> Drop for PageLockedMappedBuffer<T> where T: Copy {
   fn drop(&mut self) {
     match unsafe { cudaFreeHost(*self.ptr as *mut c_void) } {
-      cudaError::Success => {}
+      cudaError_t::Success => {}
       e => {
         panic!("failed to deallocate pinned mapped host memory: {:?}", e);
       }
@@ -161,14 +161,14 @@ impl<T> PageLockedMappedBuffer<T> where T: Copy {
     let mut ptr: *mut c_void = null_mut();
     let flags = 0x02 | if write_combined { 0x04 } else { 0 };
     match unsafe { cudaHostAlloc(&mut ptr as *mut *mut c_void, size, flags) } {
-      cudaError::Success => {}
+      cudaError_t::Success => {}
       e => {
         panic!("failed to allocated PageLockedMappedBuffer: {:?}", e);
       }
     }
     let mut dptr: *mut c_void = null_mut();
     match unsafe { cudaHostGetDevicePointer(&mut dptr as *mut *mut c_void, ptr as *mut c_void, 0) } {
-      cudaError::Success => {}
+      cudaError_t::Success => {}
       e => {
         panic!("failed to get device pointer: {:?}", e);
       }

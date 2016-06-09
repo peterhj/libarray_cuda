@@ -8,7 +8,7 @@ use host_memory::{HostBufferRef};
 
 use array::{Shape};
 use cuda::ffi::runtime::{
-  cudaError,
+  cudaError_t,
   cudaFree,
   cudaMalloc
 };
@@ -59,8 +59,8 @@ pub struct DeviceBuffer<T> where T: Copy {
 impl<T> Drop for DeviceBuffer<T> where T: Copy {
   fn drop(&mut self) {
     match unsafe { cudaFree(self.dptr as *mut c_void) } {
-      cudaError::Success => {}
-      cudaError::CudartUnloading => {
+      cudaError_t::Success => {}
+      cudaError_t::CudartUnloading => {
         // XXX(20160308): Sometimes drop() is called while the global runtime
         // is shutting down; suppress these errors.
       }
@@ -77,7 +77,7 @@ impl<T> DeviceBuffer<T> where T: Copy {
     let alloc_size = (min_size + WARP_SIZE - 1) / WARP_SIZE * WARP_SIZE;
     let mut dptr: *mut c_void = null_mut();
     match unsafe { cudaMalloc(&mut dptr as *mut *mut c_void, alloc_size) } {
-      cudaError::Success => {}
+      cudaError_t::Success => {}
       e => {
         panic!("failed to allocate DeviceBuffer: {:?}", e);
       }
@@ -403,6 +403,22 @@ impl<'ctx, T> DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
     }
   }
 
+  pub fn copy_raw(&mut self, src: &RawDeviceBufferRef<'ctx, T>) {
+    assert_eq!(self.len, src.len);
+    if self.dev_idx == src.dev_idx {
+      unsafe { cuda_memcpy_async(
+          self.as_mut_ptr() as *mut u8,
+          src.as_ptr() as *const u8,
+          self.len * size_of::<T>(),
+          CudaMemcpyKind::DeviceToDevice,
+          &self.ctx.stream,
+      ) }.unwrap();
+    } else {
+      // TODO(20151211)
+      unimplemented!();
+    }
+  }
+
   pub fn recv(&mut self, other: &DeviceBufferRef<'ctx, T>) {
     assert_eq!(self.len, other.len);
     if self.dev_idx == other.dev_idx {
@@ -504,8 +520,8 @@ unsafe impl<T> Sync for SharedDeviceBuffer<T> where T: Copy {}
 impl<T> Drop for SharedDeviceBuffer<T> where T: Copy {
   fn drop(&mut self) {
     match unsafe { cudaFree(self.dptr as *mut c_void) } {
-      cudaError::Success => {}
-      cudaError::CudartUnloading => {
+      cudaError_t::Success => {}
+      cudaError_t::CudartUnloading => {
         // XXX(20160308): Sometimes drop() is called while the global runtime
         // is shutting down; suppress these errors.
       }
@@ -522,7 +538,7 @@ impl<T> SharedDeviceBuffer<T> where T: Copy {
     let alloc_size = (min_size + WARP_SIZE - 1) / WARP_SIZE * WARP_SIZE;
     let mut dptr: *mut c_void = null_mut();
     match unsafe { cudaMalloc(&mut dptr as *mut *mut c_void, alloc_size) } {
-      cudaError::Success => {}
+      cudaError_t::Success => {}
       e => {
         panic!("failed to allocate DeviceBuffer: {:?}", e);
       }
@@ -710,7 +726,7 @@ impl<'ctx, T> SharedDeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
     self.dptr
   }
 
-  pub fn generic_copy<U>(&mut self, src: &U) where U: DeviceStorageRef<T> {
+  pub fn copy_generic<U>(&mut self, src: &U) where U: DeviceStorageRef<T> {
     assert_eq!(self.len, src.len());
     if self.dev_idx == src.device_idx() {
       unsafe { cuda_memcpy_async(
@@ -784,8 +800,8 @@ unsafe impl<T> Sync for RawDeviceBuffer<T> where T: Copy {}
 impl<T> Drop for RawDeviceBuffer<T> where T: Copy {
   fn drop(&mut self) {
     match unsafe { cudaFree(self.dptr as *mut c_void) } {
-      cudaError::Success => {}
-      cudaError::CudartUnloading => {
+      cudaError_t::Success => {}
+      cudaError_t::CudartUnloading => {
         // XXX(20160308): Sometimes drop() is called while the global runtime
         // is shutting down; suppress these errors.
       }
@@ -805,7 +821,7 @@ impl<T> RawDeviceBuffer<T> where T: Copy {
     let size = (min_size + WARP_SIZE - 1) / WARP_SIZE * WARP_SIZE;
     let mut dptr: *mut c_void = null_mut();
     match unsafe { cudaMalloc(&mut dptr as *mut *mut c_void, size) } {
-      cudaError::Success => {}
+      cudaError_t::Success => {}
       e => {
         panic!("failed to allocate DeviceBuffer: {:?}", e);
       }
@@ -918,6 +934,38 @@ impl<'a, T> RawDeviceBufferRef<'a, T> where T: Copy {
 
   pub unsafe fn as_mut_ptr(&self) -> *mut T {
     self.dptr
+  }
+
+  pub fn copy(&mut self, src: &DeviceBufferRef<T>) {
+    assert_eq!(self.len, src.len);
+    if self.dev_idx == src.dev_idx {
+      unsafe { cuda_memcpy_async(
+          self.as_mut_ptr() as *mut u8,
+          src.as_ptr() as *const u8,
+          self.len * size_of::<T>(),
+          CudaMemcpyKind::DeviceToDevice,
+          &src.ctx.stream,
+      ) }.unwrap();
+    } else {
+      // TODO(20151211)
+      unimplemented!();
+    }
+  }
+
+  pub fn copy_raw(&mut self, src: &RawDeviceBufferRef<T>, ctx: &DeviceCtxRef) {
+    assert_eq!(self.len, src.len);
+    if self.dev_idx == src.dev_idx {
+      unsafe { cuda_memcpy_async(
+          self.as_mut_ptr() as *mut u8,
+          src.as_ptr() as *const u8,
+          self.len * size_of::<T>(),
+          CudaMemcpyKind::DeviceToDevice,
+          &ctx.stream,
+      ) }.unwrap();
+    } else {
+      // TODO(20151211)
+      unimplemented!();
+    }
   }
 }
 
