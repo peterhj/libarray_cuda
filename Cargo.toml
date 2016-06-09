@@ -20,7 +20,7 @@ gcc = "*"
 float = "*"
 libc = "*"
 rand = "*"
-scoped_threadpool = "=0.1.6"
+#scoped_threadpool = "=0.1.6"
 time = "*"
 vec_map = "*"
 

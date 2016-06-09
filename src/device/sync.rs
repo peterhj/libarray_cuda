@@ -1,62 +1,88 @@
 use device::context::{DeviceCtxRef};
 
-use cuda::runtime::{OwnedCudaEvent, SharedCudaEvent};
+use cuda::ffi::runtime::{cudaStream_t, cudaError_t};
+use cuda::runtime::{CudaEvent};
 
-use std::sync::{Arc};
+use libc::{c_void};
+use std::collections::{VecDeque};
+use std::mem::{transmute};
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::usize;
 
-pub fn device_condvar_channel(ctx: &DeviceCtxRef) -> (DeviceCondvarSource, DeviceCondvarSink) {
-  let src_epoch = Arc::new(AtomicUsize::new(0));
-  let sink_epoch = Arc::new(AtomicUsize::new(0));
-  let event = OwnedCudaEvent::create_fastest().unwrap();
-  let shared_event = event.share();
-  (
-    DeviceCondvarSource{
-      epoch:        src_epoch.clone(),
-      sink_epoch:   sink_epoch.clone(),
-      event:        event,
-    },
-    DeviceCondvarSink{
-      epoch:        sink_epoch,
-      src_epoch:    src_epoch,
-      event:        shared_event,
-    },
-  )
-}
-
-pub struct DeviceCondvarSource {
-  epoch:        Arc<AtomicUsize>,
-  sink_epoch:   Arc<AtomicUsize>,
-  event:        OwnedCudaEvent,
-}
-
-impl DeviceCondvarSource {
-  pub fn notify(&self, ctx: &DeviceCtxRef) {
-    let epoch = self.epoch.load(Ordering::SeqCst);
-    while epoch > self.sink_epoch.load(Ordering::SeqCst) {
-      // Spin-wait.
-    }
-    self.event.record(&ctx.stream).unwrap();
-    let prev_epoch = self.epoch.fetch_add(1, Ordering::SeqCst);
-    assert!(prev_epoch != usize::MAX);
+/*extern "C" fn shared_start_cb(stream: cudaStream_t, status: cudaError_t, user_data: *mut c_void) {
+  match status {
+    cudaError_t::Success => {}
+    _ => panic!(),
   }
-}
-
-pub struct DeviceCondvarSink {
-  epoch:        Arc<AtomicUsize>,
-  src_epoch:    Arc<AtomicUsize>,
-  event:        SharedCudaEvent,
-}
-
-impl DeviceCondvarSink {
-  pub fn wait(&self, ctx: &DeviceCtxRef) {
-    let epoch = self.epoch.load(Ordering::SeqCst);
-    while epoch == self.src_epoch.load(Ordering::SeqCst) {
-      // Spin-wait.
+  let handle: Box<SharedDeviceCondvarHandle> = unsafe { transmute(user_data) };
+  let mut q_ops = handle.q_ops.lock().unwrap();
+  /*match (*q_ops.front(), handle.req_op) {
+    (None, Op::ReadStart) |
+    (Some(Op::ReadStart), Op::ReadStart) |
+    (Some(Op::ReadComplete), Op::ReadStart) => {
     }
-    ctx.stream.wait_shared_event(&self.event).unwrap();
-    let prev_epoch = self.epoch.fetch_add(1, Ordering::SeqCst);
-    assert!(prev_epoch != usize::MAX);
+    (Some(Op::WriteStart), Op::ReadStart) |
+    (Some(Op::WriteComplete), Op::ReadStart) => {
+    }
+    (None, Op::WriteStart) |
+    (Some(Op::ReadStart), Op::WriteStart) |
+    (Some(Op::ReadComplete), Op::WriteStart) => {
+    }
+    (Some(Op::WriteStart), Op::WriteStart) |
+    (Some(Op::WriteComplete), Op::WriteStart) => {
+    }
+    _ => unreachable!(),
+  }*/
+  q_ops.push_back(handle.req_op);
+
+  unimplemented!();
+}
+
+extern "C" fn shared_complete_cb(stream: cudaStream_t, status: cudaError_t, user_data: *mut c_void) {
+  let handle: Box<SharedDeviceCondvarHandle> = unsafe { transmute(user_data) };
+  let mut q_ops = handle.q_ops.lock().unwrap();
+  q_ops.push_back(handle.req_op);
+
+  unimplemented!();
+}*/
+
+extern "C" fn shared_post_cb(stream: cudaStream_t, status: cudaError_t, user_data: *mut c_void) {
+  let handle: Box<SharedDeviceCondvarHandle> = unsafe { transmute(user_data) };
+
+  unimplemented!();
+}
+
+extern "C" fn shared_wait_cb(stream: cudaStream_t, status: cudaError_t, user_data: *mut c_void) {
+  let handle: Box<SharedDeviceCondvarHandle> = unsafe { transmute(user_data) };
+
+  unimplemented!();
+}
+
+#[derive(Clone, Copy)]
+enum Op {
+  ReadStart,
+  ReadComplete,
+  WriteStart,
+  WriteComplete,
+}
+
+pub struct SharedDeviceCondvarHandle {
+  req_op:   Op,
+  q_ops:    Arc<Mutex<VecDeque<Op>>>,
+}
+
+pub struct SharedDeviceCondvarState {
+  sema_count:   AtomicUsize,
+}
+
+pub struct SharedDeviceCondvar {
+  //dev_events:   Arc<Mutex<Vec<Option<CudaEvent>>>>,
+}
+
+impl SharedDeviceCondvar {
+  pub fn start(&self) {
+  }
+
+  pub fn complete(&self) {
   }
 }
