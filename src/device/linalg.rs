@@ -1,6 +1,7 @@
 use device::array::{DeviceArray2dView, DeviceArray2dViewMut};
 use device::context::{DeviceCtxRef};
 use device::memory::{DeviceBufferRef, DeviceBufferRefMut, RawDeviceBufferRef};
+use ffi::*;
 
 use array::{Shape, ArrayView, ArrayViewMut};
 use cuda_blas::{
@@ -31,15 +32,22 @@ impl Transpose {
 
 pub trait VectorExt {
   type Vector;
+  type RawVector;
 
   fn vector_scale(&mut self, alpha: f32);
   fn vector_add(&mut self, alpha: f32, x: &Self::Vector);
+  fn vector_add_raw(&mut self, alpha: f32, x: &Self::RawVector);
+  fn vector_elemwise_mult(&mut self, x: &Self::Vector);
 }
 
 impl<'a> VectorExt for DeviceBufferRefMut<'a, f32> {
   type Vector = DeviceBufferRef<'a, f32>;
+  type RawVector = RawDeviceBufferRef<'a, f32>;
 
   fn vector_scale(&mut self, alpha: f32) {
+    if alpha == 1.0 {
+      return;
+    }
     let n = self.len();
     self.ctx.get_blas().set_pointer_mode(CublasPointerMode::Host);
     unsafe { cublas_sscal(
@@ -58,6 +66,76 @@ impl<'a> VectorExt for DeviceBufferRefMut<'a, f32> {
     self.ctx.get_blas().set_pointer_mode(CublasPointerMode::Host);
     unsafe { cublas_saxpy(
         &*self.ctx.get_blas(),
+        n,
+        alpha,
+        x.as_ptr(), 1,
+        self.as_mut_ptr(), 1,
+    ) }.unwrap();
+  }
+
+  fn vector_add_raw(&mut self, alpha: f32, x: &RawDeviceBufferRef<'a, f32>) {
+    let n = self.len();
+    let x_n = x.len();
+    assert_eq!(n, x_n);
+
+    self.ctx.get_blas().set_pointer_mode(CublasPointerMode::Host);
+    unsafe { cublas_saxpy(
+        &*self.ctx.get_blas(),
+        n,
+        alpha,
+        x.as_ptr(), 1,
+        self.as_mut_ptr(), 1,
+    ) }.unwrap();
+  }
+
+  fn vector_elemwise_mult(&mut self, x: &Self::Vector) {
+    let n = self.len();
+    let x_n = x.len();
+    assert_eq!(n, x_n);
+
+    unsafe { array_cuda_vector_elemwise_mult_f32(
+        x.as_ptr(),
+        n as i32,
+        self.as_mut_ptr(),
+        self.ctx.stream.ptr,
+    ) };
+  }
+}
+
+pub trait AsyncVectorExt {
+  type Ctx;
+  type Vector;
+
+  fn async_vector_scale(&mut self, alpha: f32, ctx: &Self::Ctx);
+  fn async_vector_add(&mut self, alpha: f32, x: &Self::Vector);
+}
+
+impl<'a> AsyncVectorExt for RawDeviceBufferRef<'a, f32> {
+  type Ctx = DeviceCtxRef<'a>;
+  type Vector = DeviceBufferRef<'a, f32>;
+
+  fn async_vector_scale(&mut self, alpha: f32, ctx: &Self::Ctx) {
+    if alpha == 1.0 {
+      return;
+    }
+    let n = self.len();
+    ctx.get_blas().set_pointer_mode(CublasPointerMode::Host);
+    unsafe { cublas_sscal(
+        &*ctx.get_blas(),
+        n,
+        alpha,
+        self.as_mut_ptr(), 1,
+    ) }.unwrap();
+  }
+
+  fn async_vector_add(&mut self, alpha: f32, x: &DeviceBufferRef<'a, f32>) {
+    let n = self.len();
+    let x_n = x.len();
+    assert_eq!(n, x_n);
+
+    x.ctx.get_blas().set_pointer_mode(CublasPointerMode::Host);
+    unsafe { cublas_saxpy(
+        &*x.ctx.get_blas(),
         n,
         alpha,
         x.as_ptr(), 1,

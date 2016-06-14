@@ -12,6 +12,7 @@ fn main() {
     .include("src/cu")
     .include("/usr/local/cuda/include")
     .file("src/cu/map_kernels.cu")
+    .file("src/cu/vector_kernels.cu")
     .compile("libarray_cuda_kernels.a");
 
   println!("cargo:rustc-flags=-L /usr/local/cuda/lib64");
