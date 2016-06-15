@@ -35,7 +35,7 @@ pub trait VectorExt {
   type RawVector;
 
   fn vector_scale(&mut self, alpha: f32);
-  fn vector_add(&mut self, alpha: f32, x: &Self::Vector);
+  fn vector_add(&mut self, alpha: f32, x: &Self::Vector, beta: f32);
   fn vector_add_raw(&mut self, alpha: f32, x: &Self::RawVector);
   fn vector_elemwise_mult(&mut self, x: &Self::Vector);
 }
@@ -49,28 +49,26 @@ impl<'a> VectorExt for DeviceBufferRefMut<'a, f32> {
       return;
     }
     let n = self.len();
-    self.ctx.get_blas().set_pointer_mode(CublasPointerMode::Host);
-    unsafe { cublas_sscal(
-        &*self.ctx.get_blas(),
-        n,
+    unsafe { array_cuda_vector_scale_f32(
+        self.as_mut_ptr(),
+        n as i32,
         alpha,
-        self.as_mut_ptr(), 1,
-    ) }.unwrap();
+        self.ctx.stream.ptr,
+    ) };
   }
 
-  fn vector_add(&mut self, alpha: f32, x: &DeviceBufferRef<'a, f32>) {
+  fn vector_add(&mut self, alpha: f32, x: &DeviceBufferRef<'a, f32>, beta: f32) {
     let n = self.len();
     let x_n = x.len();
     assert_eq!(n, x_n);
-
-    self.ctx.get_blas().set_pointer_mode(CublasPointerMode::Host);
-    unsafe { cublas_saxpy(
-        &*self.ctx.get_blas(),
-        n,
+    unsafe { array_cuda_vector_add_f32(
+        x.as_ptr(),
+        n as i32,
         alpha,
-        x.as_ptr(), 1,
-        self.as_mut_ptr(), 1,
-    ) }.unwrap();
+        beta,
+        self.as_mut_ptr(),
+        self.ctx.stream.ptr,
+    ) };
   }
 
   fn vector_add_raw(&mut self, alpha: f32, x: &RawDeviceBufferRef<'a, f32>) {
