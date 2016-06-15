@@ -4,7 +4,7 @@ use cuda::runtime::{
   OwnedCudaEvent, SharedCudaEvent,
 };
 use cuda_blas::{CublasHandle};
-use cuda_dnn::v4::{CudnnHandle};
+use cuda_dnn::v5::{CudnnHandle};
 use cuda_rand::{CurandGenerator};
 use cuda_sparse::{CusparseHandle};
 
