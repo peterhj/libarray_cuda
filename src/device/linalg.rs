@@ -38,6 +38,9 @@ pub trait VectorExt {
   fn vector_add(&mut self, alpha: f32, x: &Self::Vector, beta: f32);
   fn vector_add_raw(&mut self, alpha: f32, x: &Self::RawVector);
   fn vector_elemwise_mult(&mut self, x: &Self::Vector);
+
+  fn vector_inner_prod(&mut self, x: &Self::Vector, y: &Self::Vector);
+  fn vector_l2_norm(&mut self, x: &Self::Vector);
 }
 
 impl<'a> VectorExt for DeviceBufferRefMut<'a, f32> {
@@ -97,6 +100,22 @@ impl<'a> VectorExt for DeviceBufferRefMut<'a, f32> {
         self.as_mut_ptr(),
         self.ctx.stream.ptr,
     ) };
+  }
+
+  fn vector_inner_prod(&mut self, x: &Self::Vector, y: &Self::Vector) {
+    assert_eq!(1, self.len());
+    let x_n = x.len();
+    let y_n = y.len();
+    assert_eq!(x_n, y_n);
+
+    unimplemented!();
+  }
+
+  fn vector_l2_norm(&mut self, x: &Self::Vector) {
+    assert_eq!(1, self.len());
+    let n = x.len();
+
+    unimplemented!();
   }
 }
 
