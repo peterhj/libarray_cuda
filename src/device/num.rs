@@ -8,11 +8,11 @@ use array::{ArrayView, ArrayViewMut};
 use cuda::runtime::{cuda_memset_async};
 use libc::{c_int};
 
-pub trait DeviceBytesExt {
+pub trait BytesExt {
   fn set_memory(&mut self, c: u8);
 }
 
-impl<'ctx> DeviceBytesExt for DeviceBufferRefMut<'ctx, u8> {
+impl<'ctx> BytesExt for DeviceBufferRefMut<'ctx, u8> {
   fn set_memory(&mut self, c: u8) {
     unsafe { cuda_memset_async(
         self.as_mut_ptr(),
@@ -23,14 +23,14 @@ impl<'ctx> DeviceBytesExt for DeviceBufferRefMut<'ctx, u8> {
   }
 }
 
-pub trait DeviceCastBytesExt<T> {
+pub trait CastBytesExt<T> {
   type Ref;
 
   fn cast_bytes(&self, dst: &mut Self::Ref);
   fn cast_bytes_normalized(&self, dst: &mut Self::Ref);
 }
 
-impl<'ctx> DeviceCastBytesExt<f32> for DeviceBufferRef<'ctx, u8> {
+impl<'ctx> CastBytesExt<f32> for DeviceBufferRef<'ctx, u8> {
   type Ref = DeviceBufferRefMut<'ctx, f32>;
 
   fn cast_bytes(&self, dst: &mut DeviceBufferRefMut<'ctx, f32>) {
@@ -50,13 +50,13 @@ impl<'ctx> DeviceCastBytesExt<f32> for DeviceBufferRef<'ctx, u8> {
   }
 }
 
-pub trait DeviceAsyncNumExt<T> {
+pub trait AsyncNumExt<T> {
   type Ctx;
 
   fn async_set_constant(&self, alpha: T, ctx: &Self::Ctx);
 }
 
-pub trait DeviceNumExt<T> {
+pub trait NumExt<T> {
   type Ref;
 
   fn print(&mut self);
@@ -64,7 +64,7 @@ pub trait DeviceNumExt<T> {
   fn add(&mut self, other: &Self::Ref);
 }
 
-impl<'ctx> DeviceNumExt<i32> for DeviceBufferRefMut<'ctx, i32> {
+impl<'ctx> NumExt<i32> for DeviceBufferRefMut<'ctx, i32> {
   type Ref = DeviceBufferRef<'ctx, i32>;
 
   fn print(&mut self) {
@@ -91,7 +91,7 @@ impl<'ctx> DeviceNumExt<i32> for DeviceBufferRefMut<'ctx, i32> {
   }
 }
 
-impl<'ctx> DeviceAsyncNumExt<f32> for RawDeviceBufferRef<'ctx, f32> {
+impl<'ctx> AsyncNumExt<f32> for RawDeviceBufferRef<'ctx, f32> {
   //type Ref = DeviceBufferRef<'ctx, f32>;
   type Ctx = DeviceCtxRef<'ctx>;
 
@@ -112,7 +112,7 @@ impl<'ctx> DeviceAsyncNumExt<f32> for RawDeviceBufferRef<'ctx, f32> {
   }*/
 }
 
-impl<'ctx> DeviceNumExt<f32> for DeviceBufferRefMut<'ctx, f32> {
+impl<'ctx> NumExt<f32> for DeviceBufferRefMut<'ctx, f32> {
   type Ref = DeviceBufferRef<'ctx, f32>;
 
   fn print(&mut self) {
@@ -139,7 +139,7 @@ impl<'ctx> DeviceNumExt<f32> for DeviceBufferRefMut<'ctx, f32> {
   }
 }
 
-impl<'ctx> DeviceNumExt<f32> for DeviceArray2dViewMut<'ctx, f32> {
+impl<'ctx> NumExt<f32> for DeviceArray2dViewMut<'ctx, f32> {
   type Ref = DeviceArray2dView<'ctx, f32>;
 
   fn print(&mut self) {

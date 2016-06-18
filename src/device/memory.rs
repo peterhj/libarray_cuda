@@ -3,7 +3,7 @@ use device::array::{
   DeviceArray3dView, DeviceArray3dViewMut,
 };
 use device::context::{DeviceCtxRef};
-use device::ext::{DeviceBytesExt, DeviceNumExt};
+use device::num::{BytesExt, NumExt};
 use host_memory::{HostBufferRef};
 
 use array::{Shape};

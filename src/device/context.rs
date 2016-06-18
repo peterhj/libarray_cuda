@@ -186,7 +186,7 @@ impl DeviceCtxEventConsumer {
   }
 }
 
-pub struct OldDeviceContext {
+/*pub struct OldDeviceContext {
   dev_idx:    usize,
   dev_sync:   CudaEvent,
 
@@ -286,7 +286,7 @@ impl OldDeviceContext {
     unsafe { self.set_device() };
     DeviceCtxRef{ctx: self}
   }*/
-}
+}*/
 
 // XXX(20151228): DeviceContext is implemented such that the current CUDA device
 // is set upon acquiring a DeviceCtxRef. Therefore there should only be at most
@@ -390,12 +390,21 @@ impl LazyDeviceContext {
   }
 
   pub fn as_ref<'ctx>(&'ctx self) -> DeviceCtxRef<'ctx> {
-    unsafe { self.set_device() };
-    //DeviceCtxRef{ctx: self, driver: None}
     DRIVER_CONTEXT.with(|driver| {
       let driver = driver.clone();
       assert!(Rc::strong_count(&driver) <= 2,
           "DeviceCtxRef requires exclusive reference to DriverContext!");
+      unsafe { self.set_device() };
+      DeviceCtxRef{ctx: self, driver: driver}
+    })
+  }
+
+  pub fn set<'ctx>(&'ctx self) -> DeviceCtxRef<'ctx> {
+    DRIVER_CONTEXT.with(|driver| {
+      let driver = driver.clone();
+      assert!(Rc::strong_count(&driver) <= 2,
+          "DeviceCtxRef requires exclusive reference to DriverContext!");
+      unsafe { self.set_device() };
       DeviceCtxRef{ctx: self, driver: driver}
     })
   }
