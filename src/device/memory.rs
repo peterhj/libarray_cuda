@@ -94,6 +94,18 @@ impl<T> DeviceBuffer<T> where T: Copy {
     self.len
   }
 
+  pub fn view<'a, 'ctx>(&'a mut self, ctx: DeviceCtxRef<'ctx>) -> DeviceBufferView<'a, 'ctx, T> {
+    ctx.stream.wait_event(&self.dev_sync).unwrap();
+    DeviceBufferView{
+      _marker:  PhantomData,
+      ctx:      Some(ctx),
+      dev_sync: self.dev_sync.clone(),
+      dev_idx:  self.dev_idx,
+      dptr:     self.dptr as *const T,
+      len:      self.len,
+    }
+  }
+
   pub fn as_ref<'ctx>(&mut self, ctx: &'ctx DeviceCtxRef) -> DeviceBufferRef<'ctx, T> {
     ctx.stream.wait_event(&self.dev_sync).unwrap();
     DeviceBufferRef{
@@ -202,6 +214,48 @@ impl DeviceBufferInitExt for DeviceBuffer<f32> {
       buf_ref.set_constant(1.0);
     }
     buf
+  }
+}
+
+pub struct DeviceBufferView<'a, 'ctx, T> where T: Copy {
+  _marker:  PhantomData<&'a ()>,
+  ctx:      Option<DeviceCtxRef<'ctx>>,
+  dev_sync: Rc<CudaEvent>,
+  dev_idx:  usize,
+  dptr:     *const T,
+  len:      usize,
+}
+
+impl<'a, 'ctx, T> Drop for DeviceBufferView<'a, 'ctx, T> where T: Copy {
+  fn drop(&mut self) {
+    if let Some(ref ctx) = self.ctx {
+      self.dev_sync.record(&ctx.stream).unwrap();
+    }
+  }
+}
+
+impl<'a, 'ctx, T> DeviceBufferView<'a, 'ctx, T> where T: Copy {
+  pub fn len(&self) -> usize {
+    self.len
+  }
+
+  pub unsafe fn as_ptr(&self) -> *const T {
+    self.dptr as *const T
+  }
+
+  pub fn range(mut self, from: usize, to: usize) -> DeviceBufferView<'a, 'ctx, T> {
+    assert!(from <= self.len);
+    assert!(to <= self.len);
+    assert!(from <= to);
+    self.ctx.as_ref().unwrap().stream.wait_event(&self.dev_sync).unwrap();
+    DeviceBufferView{
+      _marker:  PhantomData,
+      ctx:      self.ctx.take(),
+      dev_sync: self.dev_sync.clone(),
+      dev_idx:  self.dev_idx,
+      dptr:     unsafe { (self.dptr as *const T).offset(from as isize) },
+      len:      to - from,
+    }
   }
 }
 
@@ -325,6 +379,17 @@ impl<'ctx, T> DeviceBufferRef<'ctx, T> where T: 'ctx + Copy {
     ) }.unwrap();
   }
 }
+
+/*pub struct DeviceFuture<'a, 'ctx> {
+  _marker:  PhantomData<&'a ()>,
+  ctx:      &'ctx DeviceCtxRef<'ctx>,
+}
+
+impl<'a, 'ctx> Drop for DeviceFuture<'a, 'ctx> {
+  fn drop(&mut self) {
+    self.ctx.blocking_sync();
+  }
+}*/
 
 pub struct DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
   pub ctx:  &'ctx DeviceCtxRef<'ctx>,
@@ -480,6 +545,21 @@ impl<'ctx, T> DeviceBufferRefMut<'ctx, T> where T: 'ctx + Copy {
     ) }.unwrap();
     self.ctx.blocking_sync();
   }
+
+  /*pub fn async_load<'a>(&mut self, host_buf: &'a [T]) -> DeviceFuture<'a, 'ctx> {
+    assert_eq!(self.len, host_buf.len());
+    unsafe { cuda_memcpy_async(
+        self.as_mut_ptr() as *mut u8,
+        host_buf.as_ptr() as *const u8,
+        self.len * size_of::<T>(),
+        CudaMemcpyKind::HostToDevice,
+        &self.ctx.stream,
+    ) }.unwrap();
+    DeviceFuture{
+      _marker:  PhantomData,
+      ctx:      self.ctx,
+    }
+  }*/
 
   pub unsafe fn unsafe_async_load(&mut self, host_buf: &[T]) {
     assert_eq!(self.len, host_buf.len());

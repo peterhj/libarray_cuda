@@ -108,14 +108,27 @@ impl<'a> VectorExt for DeviceBufferRefMut<'a, f32> {
     let y_n = y.len();
     assert_eq!(x_n, y_n);
 
-    unimplemented!();
+    self.ctx.get_blas().set_pointer_mode(CublasPointerMode::Device).unwrap();
+    unsafe { cublasSdot_v2(
+        self.ctx.get_blas().ptr,
+        x_n as i32,
+        x.as_ptr(), 1,
+        y.as_ptr(), 1,
+        self.as_mut_ptr(),
+    ) }.into_result().unwrap();
   }
 
   fn vector_l2_norm(&mut self, x: &Self::Vector) {
     assert_eq!(1, self.len());
     let n = x.len();
 
-    unimplemented!();
+    self.ctx.get_blas().set_pointer_mode(CublasPointerMode::Device).unwrap();
+    unsafe { cublasSnrm2_v2(
+        self.ctx.get_blas().ptr,
+        n as i32,
+        x.as_ptr(), 1,
+        self.as_mut_ptr(),
+    ) }.into_result().unwrap();
   }
 }
 
