@@ -17,6 +17,8 @@ extern "C" {
   pub fn array_cuda_map_add_f16_as_f32(src: *const f16_stub, n: c_int, dst: *mut f16_stub, stream: cudaStream_t);
 
   pub fn array_cuda_vector_scale_f32(dst: *mut f32, dim: c_int, alpha: f32, stream: cudaStream_t);
+  pub fn array_cuda_vector_exp_f32(xs: *mut f32, dim: c_int, stream: cudaStream_t);
   pub fn array_cuda_vector_add_f32(src: *const f32, dim: c_int, alpha: f32, beta: f32, dst: *mut f32, stream: cudaStream_t);
   pub fn array_cuda_vector_elemwise_mult_f32(xs: *const f32, len: c_int, ys: *mut f32, stream: cudaStream_t);
+  pub fn array_cuda_vector_elemwise_div_f32(xs: *const f32, len: c_int, ys: *mut f32, stream: cudaStream_t);
 }

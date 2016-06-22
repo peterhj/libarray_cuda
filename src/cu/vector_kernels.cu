@@ -26,6 +26,26 @@ extern "C" void array_cuda_vector_scale_f32(
       dst, dim, alpha);
 }
 
+__global__ void vector_exp_f32_kernel(
+    float *xs,
+    int dim)
+{
+  int idx = threadIdx.x + blockIdx.x * blockDim.x;
+  if (idx < dim) {
+    float x = expf(xs[idx]);
+    xs[idx] = x;
+  }
+}
+
+extern "C" void array_cuda_vector_exp_f32(
+    float *xs,
+    int dim,
+    cudaStream_t stream)
+{
+  vector_exp_f32_kernel<<<(dim+1024-1)/1024, 1024, 0, stream>>>(
+      xs, dim);
+}
+
 __global__ void vector_add_f32_kernel(
     const float *src,
     int dim,
@@ -71,5 +91,27 @@ extern "C" void array_cuda_vector_elemwise_mult_f32(
     cudaStream_t stream)
 {
   vector_elemwise_mult_f32_kernel<<<(len+1024-1)/1024, 1024, 0, stream>>>(
+      xs, len, ys);
+}
+
+__global__ void vector_elemwise_div_f32_kernel(
+    const float *xs,
+    int len,
+    float *ys)
+{
+  int idx = threadIdx.x + blockIdx.x * blockDim.x;
+  if (idx < len) {
+    float y = ys[idx] / xs[idx];
+    ys[idx] = y;
+  }
+}
+
+extern "C" void array_cuda_vector_elemwise_div_f32(
+    const float *xs,
+    int len,
+    float *ys,
+    cudaStream_t stream)
+{
+  vector_elemwise_div_f32_kernel<<<(len+1024-1)/1024, 1024, 0, stream>>>(
       xs, len, ys);
 }

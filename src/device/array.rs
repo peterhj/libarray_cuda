@@ -124,6 +124,11 @@ impl<'a, T> ArrayView<'a, T, (usize, usize)> for DeviceArray2dView<'a, T> where 
   fn view(self, lo: (usize, usize), hi: (usize, usize)) -> DeviceArray2dView<'a, T> {
     // TODO(20151214)
     unimplemented!();
+    /*DeviceArray2dView{
+      data:     self.data,
+      bound:    self.bound,
+      stride:   self.stride,
+    }*/
   }
 }
 

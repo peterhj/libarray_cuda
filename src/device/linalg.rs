@@ -35,12 +35,16 @@ pub trait VectorExt {
   type RawVector;
 
   fn vector_scale(&mut self, alpha: f32);
+  fn vector_exp(&mut self);
+
   fn vector_add(&mut self, alpha: f32, x: &Self::Vector, beta: f32);
-  fn vector_add_raw(&mut self, alpha: f32, x: &Self::RawVector);
   fn vector_elemwise_mult(&mut self, x: &Self::Vector);
+  fn vector_elemwise_div(&mut self, x: &Self::Vector);
 
   fn vector_inner_prod(&mut self, x: &Self::Vector, y: &Self::Vector);
   fn vector_l2_norm(&mut self, x: &Self::Vector);
+
+  fn vector_add_raw(&mut self, alpha: f32, x: &Self::RawVector);
 }
 
 impl<'a> VectorExt for DeviceBufferRefMut<'a, f32> {
@@ -56,6 +60,15 @@ impl<'a> VectorExt for DeviceBufferRefMut<'a, f32> {
         self.as_mut_ptr(),
         n as i32,
         alpha,
+        self.ctx.stream.ptr,
+    ) };
+  }
+
+  fn vector_exp(&mut self) {
+    let n = self.len();
+    unsafe { array_cuda_vector_exp_f32(
+        self.as_mut_ptr(),
+        n as i32,
         self.ctx.stream.ptr,
     ) };
   }
@@ -95,6 +108,19 @@ impl<'a> VectorExt for DeviceBufferRefMut<'a, f32> {
     assert_eq!(n, x_n);
 
     unsafe { array_cuda_vector_elemwise_mult_f32(
+        x.as_ptr(),
+        n as i32,
+        self.as_mut_ptr(),
+        self.ctx.stream.ptr,
+    ) };
+  }
+
+  fn vector_elemwise_div(&mut self, x: &Self::Vector) {
+    let n = self.len();
+    let x_n = x.len();
+    assert_eq!(n, x_n);
+
+    unsafe { array_cuda_vector_elemwise_div_f32(
         x.as_ptr(),
         n as i32,
         self.as_mut_ptr(),
