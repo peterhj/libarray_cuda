@@ -37,7 +37,9 @@ pub trait VectorExt {
   fn vector_scale(&mut self, alpha: f32);
   fn vector_exp(&mut self);
 
+  fn vector_set(&mut self, alpha: f32, x: &Self::Vector);
   fn vector_add(&mut self, alpha: f32, x: &Self::Vector, beta: f32);
+  fn vector_avg_online(&mut self, alpha: f32, x: &Self::Vector);
   fn vector_elemwise_mult(&mut self, x: &Self::Vector);
   fn vector_elemwise_div(&mut self, x: &Self::Vector);
 
@@ -73,6 +75,19 @@ impl<'a> VectorExt for DeviceBufferRefMut<'a, f32> {
     ) };
   }
 
+  fn vector_set(&mut self, alpha: f32, x: &DeviceBufferRef<'a, f32>) {
+    let n = self.len();
+    let x_n = x.len();
+    assert_eq!(n, x_n);
+    unsafe { array_cuda_vector_set_f32(
+        x.as_ptr(),
+        n as i32,
+        alpha,
+        self.as_mut_ptr(),
+        self.ctx.stream.ptr,
+    ) };
+  }
+
   fn vector_add(&mut self, alpha: f32, x: &DeviceBufferRef<'a, f32>, beta: f32) {
     let n = self.len();
     let x_n = x.len();
@@ -82,6 +97,19 @@ impl<'a> VectorExt for DeviceBufferRefMut<'a, f32> {
         n as i32,
         alpha,
         beta,
+        self.as_mut_ptr(),
+        self.ctx.stream.ptr,
+    ) };
+  }
+
+  fn vector_avg_online(&mut self, alpha: f32, x: &DeviceBufferRef<'a, f32>) {
+    let n = self.len();
+    let x_n = x.len();
+    assert_eq!(n, x_n);
+    unsafe { array_cuda_vector_avg_online_f32(
+        x.as_ptr(),
+        n as i32,
+        alpha,
         self.as_mut_ptr(),
         self.ctx.stream.ptr,
     ) };

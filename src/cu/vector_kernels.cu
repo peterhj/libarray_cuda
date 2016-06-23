@@ -46,6 +46,30 @@ extern "C" void array_cuda_vector_exp_f32(
       xs, dim);
 }
 
+__global__ void vector_set_f32_kernel(
+    const float *src,
+    int dim,
+    float alpha,
+    float *dst)
+{
+  int idx = threadIdx.x + blockIdx.x * blockDim.x;
+  if (idx < dim) {
+    float y = alpha * src[idx];
+    dst[idx] = y;
+  }
+}
+
+extern "C" void array_cuda_vector_set_f32(
+    const float *src,
+    int dim,
+    float alpha,
+    float *dst,
+    cudaStream_t stream)
+{
+  vector_set_f32_kernel<<<(dim+1024-1)/1024, 1024, 0, stream>>>(
+      src, dim, alpha, dst);
+}
+
 __global__ void vector_add_f32_kernel(
     const float *src,
     int dim,
@@ -70,6 +94,31 @@ extern "C" void array_cuda_vector_add_f32(
 {
   vector_add_f32_kernel<<<(dim+1024-1)/1024, 1024, 0, stream>>>(
       src, dim, alpha, beta, dst);
+}
+
+__global__ void vector_avg_online_f32_kernel(
+    const float *src,
+    int dim,
+    float alpha,
+    float *dst)
+{
+  int idx = threadIdx.x + blockIdx.x * blockDim.x;
+  if (idx < dim) {
+    float y = dst[idx];
+    y = y + alpha * (src[idx] - y);
+    dst[idx] = y;
+  }
+}
+
+extern "C" void array_cuda_vector_avg_online_f32(
+    const float *src,
+    int dim,
+    float alpha,
+    float *dst,
+    cudaStream_t stream)
+{
+  vector_avg_online_f32_kernel<<<(dim+1024-1)/1024, 1024, 0, stream>>>(
+      src, dim, alpha, dst);
 }
 
 __global__ void vector_elemwise_mult_f32_kernel(
